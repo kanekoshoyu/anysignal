@@ -13,12 +13,16 @@ async fn main() -> Result<()> {
     let config: Config = Config::from_path("config.toml")?;
     println!("Config: {:?}", config);
     // set up coinmarket cap fetchers
-    // - fear and greed index
-    // - memecoin price
-    // - bitcoin index
 
     let key_cmc = config.get_key("coinmarketcap")?;
+    // historic listing
     let url = "https://pro-api.coinmarketcap.com/v1/cryptocurrency/listings/latest";
+
+    // fear and greed
+    let url = "https://pro-api.coinmarketcap.com/v3/fear-and-greed/historical";
+
+    // bitcoin dominance
+    let url = "https://pro-api.coinmarketcap.com/v1/global-metrics/quotes/latest";
 
     let client = reqwest::Client::new();
 
