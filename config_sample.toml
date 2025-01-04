@@ -1,0 +1,4 @@
+# please make a copy and rename it to config.toml
+[[api_keys]]
+id = "coinmarketcap"
+key = "<COINMARKETCAP_API_KEY>"
