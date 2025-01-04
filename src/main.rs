@@ -17,12 +17,25 @@ async fn main() -> Result<()> {
     // - memecoin price
     // - bitcoin index
 
+    let key_cmc = config.get_key("coinmarketcap")?;
+    let url = "https://pro-api.coinmarketcap.com/v1/cryptocurrency/listings/latest";
+
+    let client = reqwest::Client::new();
+
     loop {
         println!("Hello, world!");
         // dispatch request
-        let url = "https://pro-api.coinmarketcap.com/v1/cryptocurrency/listings/latest";
-        reqwest::Request::new(Method::GET, Url::from_str(url).map_err(|i| eyre!(i))?);
 
-        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+        let response = client
+            .get(url)
+            .header("X-CMC_PRO_API_KEY", &key_cmc)
+            .send()
+            .await
+            .unwrap();
+        let text = response.text().await.unwrap();
+        println!("{:?}", text);
+        tokio::time::interval(std::time::Duration::from_secs(1))
+            .tick()
+            .await;
     }
 }
