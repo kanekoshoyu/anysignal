@@ -1,19 +1,23 @@
 use chrono::NaiveDateTime;
+use serde::{Deserialize, Serialize};
 
 /// the main signal struct
+#[derive(Debug, Clone)]
 pub struct Signal {
-    id: u64,
-    timestamp: NaiveDateTime,
-    data: SignalData,
-    info_id: u64,
+    pub id: u64,
+    pub timestamp: NaiveDateTime,
+    pub data: SignalData,
+    pub info_id: u64,
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub enum SignalData {
     Simple,
     Binary(bool),
     Scalar(f64),
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct SignalInfo {
     pub id: u64,
     pub source: String,

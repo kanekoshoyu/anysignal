@@ -1855,6 +1855,7 @@ dependencies = [
  "poem-openapi",
  "reqwest",
  "serde",
+ "serde_json",
  "thiserror 2.0.9",
  "tokio",
  "toml",
