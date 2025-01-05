@@ -4,6 +4,7 @@ version = "0.1.1"
 edition = "2021"
 
 [dependencies]
+chrono = "0.4.39"
 eyre = "0.6.5"
 futures = "0.3.0"
 poem = { version = "3.0.0", features = ["rustls", "anyhow", "session", "opentelemetry", "prometheus"] }

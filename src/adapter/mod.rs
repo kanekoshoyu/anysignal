@@ -1,1 +1,2 @@
-
+// CoinMarketCap
+pub mod coinmarketcap;

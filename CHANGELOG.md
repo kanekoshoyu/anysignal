@@ -1,4 +1,10 @@
 # [signal](./README.md) changelog
+> [TODO](./src/README.md)
+
+## [0.1.1]
+### Added
+- signal, isntance, strategy models
+- adapter module
 
 ## [0.1.1]
 ### Added

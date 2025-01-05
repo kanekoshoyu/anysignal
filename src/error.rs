@@ -12,7 +12,7 @@ pub enum ConfigError {
     Toml(#[from] TomlError),
 }
 
-// TODO implement chaining errors
+// project error
 #[derive(Debug, ThisError)]
 pub enum SignalsError {
     #[error("generic error: {0}")]

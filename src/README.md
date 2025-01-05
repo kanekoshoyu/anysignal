@@ -10,10 +10,10 @@
 | [error](./src/error.rs)        | custom error         |
 
 ## todo
-- OpenAPI compatible API for GET
 - AsyncAPI compatible API for WS
 - modular 3rd party API code structure
+- SignalGenerator trait
 - configurable filters (persistent)
 - database connection (mariaDB)
 
-[changelog here](./CHANGELOG.md)
+[changelog here](../CHANGELOG.md)
