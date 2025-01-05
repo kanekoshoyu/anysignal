@@ -3,9 +3,10 @@ use serde::Deserialize;
 use std::path::Path;
 
 // config file parser
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct Config {
     api_keys: Vec<ApiKey>, // Array of API keys
+    runner: Vec<String>,   // runners
 }
 
 impl Config {
@@ -15,17 +16,25 @@ impl Config {
         toml::from_str(&config_content).map_err(ConfigError::Toml)
     }
 
-    pub fn get_key(&self, id: &str) -> Result<String, eyre::Error> {
+    // get an API key by id
+    pub fn get_api_key(&self, id: &str) -> Result<String, eyre::Error> {
         self.api_keys
             .iter()
             .find(|key| key.id == id)
             .map(|key| key.key.clone())
             .ok_or_else(|| eyre::eyre!("key not found"))
     }
+
+    // check if a runner has been set
+    pub fn has_runner(&self, id: &str) -> bool {
+        self.runner.iter().any(|runner| runner == id)
+    }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct ApiKey {
-    id: String,  // API key identifier
-    key: String, // Actual API key
+    /// API key identifier
+    id: String,
+    /// Actual API key
+    key: String,
 }

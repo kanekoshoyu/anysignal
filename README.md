@@ -1,12 +1,7 @@
-# Signals MFT Indexer
+# Signal MFT Indexer
 > PubSub/Get index market data for trading
 
-## TODO
-- OpenAPI compatible API for GET
-- AsyncAPI compatible API for WS
-- 
-- modular 3rd party API code structure
-- configurable filters (persistent)
-- database connection (mariaDB)
+A trading **strategy** generates **instances** each consisting **legs** based on **signals**.
 
-[changelog here](./CHANGELOG.md)
+[code structure and todo](./src/README.md)
+[changelog](./CHANGELOG.md)
