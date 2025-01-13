@@ -33,9 +33,9 @@ async fn fetch(api_key: &str) -> Result<NewsApiResponse> {
 
     // Dispatch request
     let response = client
-    .get(format!("{}{}", url, api_key))
-    .header(USER_AGENT, AGENT)
-    .send()
+        .get(format!("{}{}", url, api_key))
+        .header(USER_AGENT, AGENT)
+        .send()
         .await
         .unwrap();
     let response = response.text().await.unwrap();

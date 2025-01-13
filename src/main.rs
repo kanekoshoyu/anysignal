@@ -19,9 +19,8 @@ async fn main() -> Result<()> {
 
     if config.has_runner("api") {
         println!("Starting API server");
-        let handle = tokio::spawn(
-            async move { host_rest_api_server().await }.map_err(|i| SignalsError::from(i)),
-        );
+        let handle =
+            tokio::spawn(async move { host_rest_api_server().await }.map_err(SignalsError::from));
         runners.push(handle);
     }
 
