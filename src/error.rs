@@ -1,4 +1,4 @@
-use crate::api::rest::ApiError;
+use crate::{adapter::AdapterError, api::rest::ApiError};
 pub use eyre::Error as EyreError;
 pub use std::io::Error as IoError;
 pub use thiserror::Error as ThisError;
@@ -21,6 +21,8 @@ pub enum SignalsError {
     Config(ConfigError),
     #[error("api error: {0}")]
     Api(ApiError),
+    #[error("adapter error: {0}")]
+    Adapter(AdapterError),
 }
 
 pub type Result<T> = std::result::Result<T, SignalsError>;
@@ -40,5 +42,11 @@ impl From<ConfigError> for SignalsError {
 impl From<ApiError> for SignalsError {
     fn from(error: ApiError) -> Self {
         SignalsError::Api(error)
+    }
+}
+
+impl From<AdapterError> for SignalsError {
+    fn from(error: AdapterError) -> Self {
+        SignalsError::Adapter(error)
     }
 }

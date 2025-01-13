@@ -1,5 +1,8 @@
 # NOTE to run the program, please make a copy of this file and name it as config.toml
-runner = ["api", "coinmarketcap"]
+runner = ["api", "coinmarketcap", "newsapi"]
 [[api_keys]]
 id = "coinmarketcap"
 key = "<COINMARKETCAP_API_KEY>" # replace this with your own API key
+[[api_keys]]
+id = "newsapi"
+key = "<NEWSAPI_API_KEY>" # replace this with your own API key
