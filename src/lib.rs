@@ -1,3 +1,5 @@
+#![feature(duration_constructors)]
+
 /// third party api
 pub mod adapter;
 /// api server

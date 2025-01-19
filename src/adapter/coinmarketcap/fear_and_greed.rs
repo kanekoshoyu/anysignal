@@ -1,16 +1,19 @@
-use crate::model::signal::{Signal, SignalData};
+use super::prelude::*;
+use crate::{
+    database::insert_signal_questdb,
+    model::signal::{Signal, SignalData},
+};
 use questdb::{
     ingress::{Buffer, Sender, TimestampMicros},
     Result as QuestResult,
 };
 use rand::Rng;
 use serde::Deserialize;
-
-use super::prelude::*;
+use tokio::time::Duration;
 
 // TODO generalize into a SignalFetcher Trait and implement the fetcher for each signal
 
-fn signal_info() -> SignalInfo {
+fn fear_and_greed_signal_info() -> SignalInfo {
     SignalInfo {
         id: 0,
         signal_type: "fear_and_greed".to_string(),
@@ -20,20 +23,31 @@ fn signal_info() -> SignalInfo {
     }
 }
 
-pub async fn runner_store_signal_fear_and_greed_index(
-    config: Config,
-    period: tokio::time::Duration,
-) -> Result<()> {
-    let signal_info = signal_info();
-    let mut interval = tokio::time::interval(period);
+pub struct FearAndGreedSignalSource {
+    api_key: String,
+    poll_interval_duration: Duration,
+}
 
-    let key_cmc = config.get_api_key("coinmarketcap")?;
-    loop {
-        // Wait for the next tick
-        interval.tick().await;
+impl FearAndGreedSignalSource {
+    pub fn new(api_key: String, poll_interval_duration: Duration) -> Self {
+        Self {
+            api_key,
+            poll_interval_duration,
+        }
+    }
+}
+/// set up polling signal source trait
+impl PollingSignalSource for FearAndGreedSignalSource {
+    fn get_signal_info(&self) -> SignalInfo {
+        fear_and_greed_signal_info()
+    }
 
-        println!("Fetching coinmarket cap:");
-        let response = fetch_fear_and_greed_index(&key_cmc).await?;
+    fn poll_interval_duration(&self) -> Duration {
+        self.poll_interval_duration
+    }
+
+    async fn get_signals(&self) -> Result<Vec<Signal>> {
+        let response = fetch_fear_and_greed_index(&self.api_key).await?;
 
         let mut signals = Vec::new();
         for data in response.data {
@@ -41,12 +55,12 @@ pub async fn runner_store_signal_fear_and_greed_index(
                 id: 0,
                 timestamp_us: data.timestamp_micros().unwrap(),
                 data: SignalData::Scalar(data.value),
-                info_id: signal_info.id,
+                info_id: self.get_signal_info().id,
             };
             signals.push(signal);
         }
         signals.sort_by_key(|i| i.timestamp_us);
-        println!("Signals: {:#?}", signals);
+        Ok(signals)
     }
 }
 
@@ -85,7 +99,7 @@ impl FearAndGreedIndexData {
     }
 }
 
-pub fn insert_quest_db(
+pub fn insert_quest_db_fear_and_greed(
     sender: &mut Sender,
     signal_info: &SignalInfo,
     data: &[FearAndGreedIndexData],
@@ -133,11 +147,11 @@ mod tests {
         use questdb::ingress::Sender;
         let mut sender = Sender::from_conf("http::addr=localhost:9000;").unwrap();
 
-        let signal_info = signal_info();
+        let signal_info = fear_and_greed_signal_info();
 
         let data = [FearAndGreedIndexData::dummy()].to_vec();
 
-        insert_quest_db(&mut sender, &signal_info, &data).unwrap();
+        insert_quest_db_fear_and_greed(&mut sender, &signal_info, &data).unwrap();
     }
 
     #[tokio::test]
@@ -147,7 +161,7 @@ mod tests {
         use questdb::ingress::Sender;
         let mut sender = Sender::from_conf("http::addr=localhost:9000;").unwrap();
 
-        let signal_info = signal_info();
+        let signal_info = fear_and_greed_signal_info();
 
         let data = [
             FearAndGreedIndexData {
@@ -161,7 +175,7 @@ mod tests {
         ]
         .to_vec();
 
-        insert_quest_db(&mut sender, &signal_info, &data).unwrap();
+        insert_quest_db_fear_and_greed(&mut sender, &signal_info, &data).unwrap();
     }
 
     #[tokio::test]
@@ -172,8 +186,8 @@ mod tests {
         let config: Config = Config::from_path("config.toml").unwrap();
         let key_cmc = config.get_api_key("coinmarketcap").unwrap();
         let data = fetch_fear_and_greed_index(&key_cmc).await.unwrap();
-        let signal_info = signal_info();
+        let signal_info = fear_and_greed_signal_info();
         let mut sender = Sender::from_conf("http::addr=localhost:9000;").unwrap();
-        insert_quest_db(&mut sender, &signal_info, &data.data).unwrap();
+        insert_quest_db_fear_and_greed(&mut sender, &signal_info, &data.data).unwrap();
     }
 }

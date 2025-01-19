@@ -1,6 +1,4 @@
-use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 
 /// the main signal struct
 #[derive(Debug, Clone)]
@@ -17,7 +15,7 @@ pub enum SignalData {
     Binary(bool),
     Scalar(f64),
     Text(String),
-    Json(Value),
+    // Json(Value), // JSON not supported by questdb
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

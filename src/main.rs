@@ -1,6 +1,7 @@
 use futures::future::join_all;
 use futures::TryFutureExt;
-use signals::adapter::coinmarketcap::runner_store_signal_fear_and_greed_index;
+use signals::adapter::coinmarketcap::fear_and_greed::FearAndGreedSignalSource;
+use signals::adapter::coinmarketcap::prelude::PollingSignalSource;
 use signals::adapter::newsapi::run_news_fetcher;
 use signals::api::host_rest_api_server;
 use signals::config::Config;
@@ -26,10 +27,11 @@ async fn main() -> Result<()> {
 
     if config.has_runner("coinmarketcap") {
         println!("Starting CoinMarketCap indexer");
-        let period = tokio::time::Duration::from_secs(10);
+        let poll_duration = tokio::time::Duration::from_secs(10);
         let config = config.clone();
-        let handle =
-            tokio::spawn(async move { runner_store_signal_fear_and_greed_index(config.clone(), period).await });
+        let source =
+            FearAndGreedSignalSource::new(config.get_api_key("coinmarketcap")?, poll_duration);
+        let handle = tokio::spawn(async move { source.run_loop().await });
         runners.push(handle);
     }
 

@@ -1,5 +1,6 @@
 use crate::{adapter::AdapterError, api::rest::ApiError};
 pub use eyre::Error as EyreError;
+pub use questdb::Error as QuestError;
 pub use std::io::Error as IoError;
 pub use thiserror::Error as ThisError;
 pub use toml::de::Error as TomlError;
@@ -23,6 +24,8 @@ pub enum SignalsError {
     Api(ApiError),
     #[error("adapter error: {0}")]
     Adapter(AdapterError),
+    #[error("quest error: {0}")]
+    Quest(QuestError),
 }
 
 pub type Result<T> = std::result::Result<T, SignalsError>;
@@ -48,5 +51,11 @@ impl From<ApiError> for SignalsError {
 impl From<AdapterError> for SignalsError {
     fn from(error: AdapterError) -> Self {
         SignalsError::Adapter(error)
+    }
+}
+
+impl From<QuestError> for SignalsError {
+    fn from(error: QuestError) -> Self {
+        SignalsError::Quest(error)
     }
 }
