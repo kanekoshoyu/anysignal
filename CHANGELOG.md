@@ -1,10 +1,14 @@
 # [signal](./README.md) changelog
 > [TODO](./src/README.md)
 
+## [0.1.3]
+### Added
+- questdb sample insertion function
+
 ## [0.1.2]
 ### Added
 - news fetcher
-- 
+
 ## [0.1.1]
 ### Added
 - signal, isntance, strategy models

@@ -1,5 +1,5 @@
 # [signal](../README.md) code structure and todo
-> PubSub/Get index market data for trading
+> PubSub/Get index market data for trading powered by QuestDB
 
 ## source code structure
 | module                         | description          |
@@ -14,6 +14,8 @@
 - modular 3rd party API code structure
 - SignalGenerator trait
 - configurable filters (persistent)
-- database connection (mariaDB)
+- upsert data on QuestDB
+- selection on QuestDB
+- basic chart plotting on Grafana
 
 [changelog here](../CHANGELOG.md)

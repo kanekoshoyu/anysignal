@@ -6,14 +6,17 @@ use reqwest::header::USER_AGENT;
 use serde::Deserialize;
 
 // TODO generalize into a SignalFetcher Trait and implement the fetcher for each signal
+fn signal_info() -> SignalInfo {
+    SignalInfo {
+        id: 4,
+        signal_type: "news".to_string(),
+        source: SOURCE.to_string(),
+        description: "News Aritcle".to_string(),
+        is_atomic: true,
+    }
+}
 
 pub async fn run_news_fetcher(config: Config, period: tokio::time::Duration) -> Result<()> {
-    let signal_info = SignalInfo {
-        id: 0,
-        source: SOURCE.to_string(),
-        description: "News Sentiment Index".to_string(),
-        is_atomic: true,
-    };
     let mut interval = tokio::time::interval(period);
     let api_key = config.get_api_key("newsapi")?;
 

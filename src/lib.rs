@@ -1,12 +1,14 @@
-// third party api
+/// third party api
 pub mod adapter;
-// api server
+/// api server
 pub mod api;
-// project model
-pub mod model;
-// toml configuration
+/// toml configuration
 pub mod config;
-// project error
+/// database
+pub mod database;
+/// project error
 pub mod error;
-// metadata
+/// metadata
 pub mod metadata;
+/// project model
+pub mod model;
