@@ -1,7 +1,13 @@
+pub mod response;
+
 use crate::model::signal::{Signal, SignalData, SignalInfo};
 use questdb::ingress::{Buffer, Sender, TimestampMicros};
 use questdb::Result as QuestResult;
+use reqwest::Client;
+use serde::Deserialize;
+use sqlparser::ast::Query;
 
+// batch insert using questdb ingress
 pub fn insert_signal_questdb(
     sender: &mut Sender,
     signal_info: &SignalInfo,
@@ -39,14 +45,47 @@ pub fn insert_signal_questdb(
     Ok(())
 }
 
+// select via query on http
 pub async fn select_signal_questdb(
-    sender: &mut Sender,
+    client: &Client,
     signal_info: &SignalInfo,
-    signals: &[Signal],
-) -> QuestResult<()> {
-    todo!("implement the select function, used by upsert");
-    Ok(())
+    query: Query,
+) -> QuestResult<Vec<Signal>> {
+    let query: String = query.to_string();
+    println!("query={query}");
+    let response = client
+        .get("http://localhost:9000/exec")
+        .query(&["query", &query])
+        .send()
+        .await
+        .unwrap();
+    // implement the signal parser
+    let signals = Vec::new();
+    Ok(signals)
 }
+
+#[derive(Debug, Deserialize)]
+struct QuestDBResponse {
+    query: String,
+    columns: Vec<Column>,
+    timestamp: usize,
+    dataset: Vec<DataRow>,
+    count: usize,
+}
+
+#[derive(Debug, Deserialize)]
+struct Column {
+    name: String,
+    #[serde(rename = "type")]
+    column_type: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct DataRow(
+    String, // "id" (SYMBOL)
+    f64,    // "value" (DOUBLE)
+    String, // "timestamp" (TIMESTAMP as ISO 8601 string)
+);
 
 #[cfg(test)]
 mod tests {
