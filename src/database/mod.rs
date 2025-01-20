@@ -1,6 +1,6 @@
 pub mod response;
 
-use crate::model::signal::{Signal, SignalData, SignalInfo};
+use crate::model::signal::{Signal, SignalData, SignalDataType, SignalInfo};
 use questdb::ingress::{Buffer, Sender, TimestampMicros};
 use questdb::Result as QuestResult;
 use reqwest::Client;
@@ -62,8 +62,39 @@ pub async fn select_signal_questdb(signal_info_id: impl AsRef<str>) -> QuestResu
         .await
         .unwrap();
     let text = response.text().await.unwrap();
-    let result: QuestDBResponse<SignalDataRow> = serde_json::from_str(&text).unwrap();
+    let result: QuestDBResponse<SignalDataRow<f64>> = serde_json::from_str(&text).unwrap();
     let signals = result.dataset;
+    println!("signals: {signals:?}");
+
+    // TODO implement the reconstruction of signal from the questdb
+    Ok(Vec::new())
+}
+
+// select via query on http
+pub async fn select_signal(
+    signal_info_id: impl AsRef<str>,
+    signal_data_type: SignalDataType,
+) -> QuestResult<Vec<Signal>> {
+    // TODO construct a query from the signal_info
+    // TODO construct the query using AST
+    let query_string = format!(
+        "SELECT * FROM signal_scalar where id = '{}';",
+        signal_info_id.as_ref()
+    );
+    println!("{query_string}");
+
+    let client = reqwest::Client::new();
+    let response = client
+        .get("http://localhost:9000/exec")
+        .query(&[("query", &query_string)])
+        .send()
+        .await
+        .unwrap();
+    let text = response.text().await.unwrap();
+    // TODO select type based on the provided signal_data_type
+    let result: QuestDBResponse<SignalDataRow<f64>> = serde_json::from_str(&text).unwrap();
+    let signals: Vec<SignalDataRow<f64>> = result.dataset;
+
     println!("signals: {signals:?}");
 
     // TODO implement the reconstruction of signal from the questdb
@@ -103,5 +134,11 @@ mod tests {
     async fn test_select_questdb() {
         use super::*;
         select_signal_questdb("DummySource").await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_select_signal() {
+        use super::*;
+        select_signal("DummySource", SignalDataType::Scalar).await.unwrap();
     }
 }

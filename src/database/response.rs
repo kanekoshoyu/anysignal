@@ -18,12 +18,11 @@ pub struct Column {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct SignalDataRow(
+pub struct SignalDataRow<VALUE: Debug + 'static>(
     String, // "id" (SYMBOL)
-    f64,    // "value" (DOUBLE)
+    VALUE,  // "value" (DOUBLE)
     String, // "timestamp" (TIMESTAMP as ISO 8601 string)
 );
-
 
 #[cfg(test)]
 mod tests {
@@ -57,7 +56,7 @@ mod tests {
         "#;
 
         // Deserialize JSON into Rust structs
-        let response: QuestDBResponse<SignalDataRow> = serde_json::from_str(json_response).unwrap();
+        let response: QuestDBResponse<SignalDataRow<f64>> = serde_json::from_str(json_response).unwrap();
 
         // Iterate through the dataset
         for row in &response.dataset {

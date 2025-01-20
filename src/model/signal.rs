@@ -30,6 +30,16 @@ pub enum SignalData {
     // Json(Value), // JSON not supported by questdb
 }
 
+/// description of SignalData
+#[derive(Default, Debug, Clone, Deserialize, Serialize)]
+pub enum SignalDataType {
+    #[default]
+    Simple,
+    Binary,
+    Scalar,
+    Text,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct SignalInfo {
     pub id: u64,
