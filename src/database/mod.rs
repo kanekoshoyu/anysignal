@@ -4,8 +4,7 @@ use crate::model::signal::{Signal, SignalData, SignalInfo};
 use questdb::ingress::{Buffer, Sender, TimestampMicros};
 use questdb::Result as QuestResult;
 use reqwest::Client;
-use serde::Deserialize;
-use sqlparser::ast::Query;
+use response::{QuestDBResponse, SignalDataRow};
 
 // batch insert using questdb ingress
 pub fn insert_signal_questdb(
@@ -46,46 +45,30 @@ pub fn insert_signal_questdb(
 }
 
 // select via query on http
-pub async fn select_signal_questdb(
-    client: &Client,
-    signal_info: &SignalInfo,
-    query: Query,
-) -> QuestResult<Vec<Signal>> {
-    let query: String = query.to_string();
-    println!("query={query}");
+pub async fn select_signal_questdb(signal_info_id: impl AsRef<str>) -> QuestResult<Vec<Signal>> {
+    // TODO construct a query from the signal_info
+    // TODO construct the query using AST
+    let query_string = format!(
+        "SELECT * FROM signal_scalar where id = '{}';",
+        signal_info_id.as_ref()
+    );
+    println!("{query_string}");
+
+    let client = reqwest::Client::new();
     let response = client
         .get("http://localhost:9000/exec")
-        .query(&["query", &query])
+        .query(&[("query", &query_string)])
         .send()
         .await
         .unwrap();
-    // implement the signal parser
-    let signals = Vec::new();
-    Ok(signals)
-}
+    let text = response.text().await.unwrap();
+    let result: QuestDBResponse<SignalDataRow> = serde_json::from_str(&text).unwrap();
+    let signals = result.dataset;
+    println!("signals: {signals:?}");
 
-#[derive(Debug, Deserialize)]
-struct QuestDBResponse {
-    query: String,
-    columns: Vec<Column>,
-    timestamp: usize,
-    dataset: Vec<DataRow>,
-    count: usize,
+    // TODO implement the reconstruction of signal from the questdb
+    Ok(Vec::new())
 }
-
-#[derive(Debug, Deserialize)]
-struct Column {
-    name: String,
-    #[serde(rename = "type")]
-    column_type: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct DataRow(
-    String, // "id" (SYMBOL)
-    f64,    // "value" (DOUBLE)
-    String, // "timestamp" (TIMESTAMP as ISO 8601 string)
-);
 
 #[cfg(test)]
 mod tests {
@@ -117,24 +100,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_upsert_questdb() {
-        // result: this seems to just store the both data
+    async fn test_select_questdb() {
         use super::*;
-        use questdb::ingress::Sender;
-        let mut sender = Sender::from_conf("http::addr=localhost:9000;").unwrap();
-        let signal_info = SignalInfo::dummy();
-
-        let time = Utc::now().timestamp_micros();
-        let signal_1 = Signal {
-            data: SignalData::Scalar(1.0),
-            timestamp_us: time.clone(),
-            ..Default::default()
-        };
-        let mut signal_2 = signal_1.clone();
-        signal_2.data = SignalData::Scalar(2.0);
-
-        let data = [signal_1, signal_2].to_vec();
-
-        insert_signal_questdb(&mut sender, &signal_info, &data).unwrap();
+        select_signal_questdb("DummySource").await.unwrap();
     }
 }

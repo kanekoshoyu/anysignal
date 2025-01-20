@@ -3,18 +3,18 @@ use std::fmt::Debug;
 
 #[derive(Debug, Deserialize)]
 pub struct QuestDBResponse<T: Debug + 'static> {
-    query: String,
-    columns: Vec<Column>,
-    timestamp: usize,
-    dataset: Vec<T>,
-    count: usize,
+    pub query: String,
+    pub columns: Vec<Column>,
+    pub timestamp: usize,
+    pub dataset: Vec<T>,
+    pub count: usize,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct Column {
-    name: String,
+    pub name: String,
     #[serde(rename = "type")]
-    column_type: String,
+    pub column_type: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -23,6 +23,7 @@ pub struct SignalDataRow(
     f64,    // "value" (DOUBLE)
     String, // "timestamp" (TIMESTAMP as ISO 8601 string)
 );
+
 
 #[cfg(test)]
 mod tests {

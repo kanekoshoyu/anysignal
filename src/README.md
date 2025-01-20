@@ -11,11 +11,9 @@
 
 ## todo
 - AsyncAPI compatible API for WS
-- modular 3rd party API code structure
-- SignalGenerator trait
-- configurable filters (persistent)
+- selection reconstruction of Signal struct
 - upsert data on QuestDB
-- selection on QuestDB
+- configurable filters (persistent)
 - basic chart plotting on Grafana
 
 [changelog here](../CHANGELOG.md)
