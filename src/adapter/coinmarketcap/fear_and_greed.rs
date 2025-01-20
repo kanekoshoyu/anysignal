@@ -99,35 +99,17 @@ impl FearAndGreedIndexData {
     }
 }
 
-pub fn insert_quest_db_fear_and_greed(
-    sender: &mut Sender,
-    signal_info: &SignalInfo,
-    data: &[FearAndGreedIndexData],
-) -> QuestResult<()> {
-    // do a query on existing data with the timestamp
-
-    // batch store data into the buffer
-    let mut buffer = Buffer::new();
-    for data in data {
-        let timestamp_us = data.timestamp_micros().unwrap();
-        buffer
-            .table("signal")?
-            .symbol("id", &signal_info.source)?
-            .column_f64("value", data.value)?
-            .at(TimestampMicros::new(timestamp_us))?;
-    }
-    sender.flush(&mut buffer)?;
-    Ok(())
-}
-
-// pub fn get_rows_quest_db(
+// pub fn insert_quest_db_fear_and_greed(
 //     sender: &mut Sender,
-//     signal_info: &SignalInfo, // add condition here,
+//     signal_info: &SignalInfo,
+//     data: &[FearAndGreedIndexData],
 // ) -> QuestResult<()> {
+//     // do a query on existing data with the timestamp
+
+//     // batch store data into the buffer
 //     let mut buffer = Buffer::new();
 //     for data in data {
 //         let timestamp_us = data.timestamp_micros().unwrap();
-
 //         buffer
 //             .table("signal")?
 //             .symbol("id", &signal_info.source)?
@@ -138,56 +120,3 @@ pub fn insert_quest_db_fear_and_greed(
 //     Ok(())
 // }
 
-#[cfg(test)]
-mod tests {
-
-    #[tokio::test]
-    async fn test_store_questdb() {
-        use super::*;
-        use questdb::ingress::Sender;
-        let mut sender = Sender::from_conf("http::addr=localhost:9000;").unwrap();
-
-        let signal_info = fear_and_greed_signal_info();
-
-        let data = [FearAndGreedIndexData::dummy()].to_vec();
-
-        insert_quest_db_fear_and_greed(&mut sender, &signal_info, &data).unwrap();
-    }
-
-    #[tokio::test]
-    async fn test_update_questdb() {
-        // result: this seems to just store the both data
-        use super::*;
-        use questdb::ingress::Sender;
-        let mut sender = Sender::from_conf("http::addr=localhost:9000;").unwrap();
-
-        let signal_info = fear_and_greed_signal_info();
-
-        let data = [
-            FearAndGreedIndexData {
-                timestamp: "1737275475".into(),
-                value: 100.0,
-            },
-            FearAndGreedIndexData {
-                timestamp: "1737275475".into(),
-                value: 75.0,
-            },
-        ]
-        .to_vec();
-
-        insert_quest_db_fear_and_greed(&mut sender, &signal_info, &data).unwrap();
-    }
-
-    #[tokio::test]
-    async fn test_store_index_questdb() {
-        // result: this seems to just store the both data
-        use super::*;
-        use questdb::ingress::Sender;
-        let config: Config = Config::from_path("config.toml").unwrap();
-        let key_cmc = config.get_api_key("coinmarketcap").unwrap();
-        let data = fetch_fear_and_greed_index(&key_cmc).await.unwrap();
-        let signal_info = fear_and_greed_signal_info();
-        let mut sender = Sender::from_conf("http::addr=localhost:9000;").unwrap();
-        insert_quest_db_fear_and_greed(&mut sender, &signal_info, &data.data).unwrap();
-    }
-}

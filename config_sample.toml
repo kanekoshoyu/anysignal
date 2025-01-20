@@ -4,6 +4,7 @@ runner = [
     "coinmarketcap",
     # "newsapi"
 ]
+
 [[api_keys]]
 id = "coinmarketcap"
 key = "<COINMARKETCAP_API_KEY>" # replace this with your own API key
