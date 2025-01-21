@@ -10,6 +10,7 @@ fn signal_info() -> SignalInfo {
     SignalInfo {
         id: 4,
         signal_type: "news".to_string(),
+        data_type: SignalDataType::Text,
         source: SOURCE.to_string(),
         description: "News Aritcle".to_string(),
         is_atomic: true,

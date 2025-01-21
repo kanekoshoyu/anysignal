@@ -8,9 +8,9 @@ pub use new_listing::run_signal_new_listing;
 
 pub mod prelude {
     pub use crate::config::Config;
-    use crate::database::insert_signal_questdb;
+    use crate::database::insert_signal_db;
     pub use crate::error::Result;
-    pub use crate::model::signal::{Signal, SignalInfo};
+    pub use crate::model::signal::*;
     pub const KEY: &str = "X-CMC_PRO_API_KEY";
     pub const SOURCE: &str = "CoinMarketCap";
     use questdb::ingress::Sender;
@@ -37,9 +37,8 @@ pub mod prelude {
                 let mut sender = Sender::from_conf("http::addr=localhost:9000;").unwrap();
                 loop {
                     let signals = self.get_signals().await?;
-                    insert_signal_questdb(&mut sender, &signal_info, &signals)?;
+                    insert_signal_db(&mut sender, &signal_info, &signals)?;
                     interval.tick().await;
-
                 }
             }
         }

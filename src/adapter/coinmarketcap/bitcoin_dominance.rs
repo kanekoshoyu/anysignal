@@ -4,6 +4,7 @@ fn signal_info() -> SignalInfo {
     SignalInfo {
         id: 2,
         signal_type: "btc_dominance".to_string(),
+        data_type: SignalDataType::Scalar,
         source: SOURCE.to_string(),
         description: "Bitcoin Dominance Index".to_string(),
         is_atomic: true,

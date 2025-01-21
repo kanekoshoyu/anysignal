@@ -1,12 +1,5 @@
 use super::prelude::*;
-use crate::{
-    database::insert_signal_questdb,
-    model::signal::{Signal, SignalData},
-};
-use questdb::{
-    ingress::{Buffer, Sender, TimestampMicros},
-    Result as QuestResult,
-};
+use crate::model::signal::{Signal, SignalData};
 use rand::Rng;
 use serde::Deserialize;
 use tokio::time::Duration;
@@ -17,6 +10,7 @@ fn fear_and_greed_signal_info() -> SignalInfo {
     SignalInfo {
         id: 0,
         signal_type: "fear_and_greed".to_string(),
+        data_type: SignalDataType::Scalar,
         source: SOURCE.to_string(),
         description: "Fear and Greed Index".to_string(),
         is_atomic: true,
@@ -52,7 +46,6 @@ impl PollingSignalSource for FearAndGreedSignalSource {
         let mut signals = Vec::new();
         for data in response.data {
             let signal = Signal {
-                id: 0,
                 timestamp_us: data.timestamp_micros().unwrap(),
                 data: SignalData::Scalar(data.value),
                 info_id: self.get_signal_info().id,
@@ -119,4 +112,3 @@ impl FearAndGreedIndexData {
 //     sender.flush(&mut buffer)?;
 //     Ok(())
 // }
-

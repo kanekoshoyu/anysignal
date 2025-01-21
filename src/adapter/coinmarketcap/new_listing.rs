@@ -8,7 +8,6 @@ pub async fn run_signal_new_listing() -> Result<()> {
     // Ok(())
 }
 
-
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 

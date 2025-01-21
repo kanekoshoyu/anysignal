@@ -1,6 +1,11 @@
 # [signal](./README.md) changelog
 > [TODO](./src/README.md)
 
+## [0.2.0]
+### Added
+- questdb insert, select, insert_unique signals
+- questdb row schema in table.rs
+
 ## [0.1.3]
 ### Added
 - questdb sample insertion function
