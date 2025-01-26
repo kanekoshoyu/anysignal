@@ -9,3 +9,5 @@ pub enum AdapterError {
     #[error("Data")]
     Data,
 }
+
+pub type AdapterResult<T> = Result<T, AdapterError>;
