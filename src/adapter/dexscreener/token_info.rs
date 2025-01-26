@@ -3,12 +3,19 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
+struct DexSearchPairsReponse {
+    schema_version: String,
+    pairs: Vec<DexTokenInfo>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
 struct DexTokenInfo {
     chain_id: String,
     dex_id: String,
     url: String,
     pair_address: String,
-    labels: Vec<String>,
+    labels: Option<Vec<String>>,
     base_token: TokenInfo,
     quote_token: TokenInfo,
     price_native: String,
@@ -20,7 +27,7 @@ struct DexTokenInfo {
     fdv: u64,
     market_cap: u64,
     pair_created_at: u64,
-    info: Info,
+    info: Option<Info>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -54,16 +61,16 @@ struct Volume {
 
 #[derive(Serialize, Deserialize, Debug)]
 struct PriceChange {
-    m5: f64,
-    h1: f64,
-    h6: f64,
-    h24: f64,
+    m5: Option<f64>,
+    h1: Option<f64>,
+    h6: Option<f64>,
+    h24: Option<f64>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 struct Liquidity {
     usd: f64,
-    base: u64,
+    base: f64,
     quote: f64,
 }
 
@@ -89,13 +96,28 @@ struct Social {
     url: String,
 }
 
-// Function to fetch the Fear and Greed Index
+// fetch token info based on chain_id and token_id
 async fn fetch_token_info(chain_id: &str, token_id: &str) -> AdapterResult<Vec<DexTokenInfo>> {
     let url = format!("https://api.dexscreener.com/tokens/v1/{chain_id}/{token_id}");
     let client = reqwest::Client::new();
     let response = client.get(url).send().await.unwrap();
     let response = response.text().await.unwrap();
     let response = serde_json::from_str::<Vec<DexTokenInfo>>(&response).unwrap();
+    Ok(response)
+}
+
+// fetch relevant pairs based on a keyword
+async fn search_pairs(keyword: &str) -> AdapterResult<DexSearchPairsReponse> {
+    let url = format!("https://api.dexscreener.com/latest/dex/search");
+    let client = reqwest::Client::new();
+    let response = client
+        .get(url)
+        .query(&[("q", keyword)])
+        .send()
+        .await
+        .unwrap();
+    let response = response.text().await.unwrap();
+    let response = serde_json::from_str::<DexSearchPairsReponse>(&response).unwrap();
     Ok(response)
 }
 
@@ -107,6 +129,21 @@ mod tests {
         let chain_id = "solana";
         let token_id = "6p6xgHyF7AeE6TZkSmFsko444wqoP15icUSqi2jfGiPN";
         let result = fetch_token_info(&chain_id, &token_id).await.unwrap();
+        assert!(!result.is_empty());
+        println!("result: {:#?}", result.len())
+    }
+
+    #[tokio::test]
+    async fn test_seach_pairs() {
+        use super::*;
+        let keyword = "TRUMP";
+        let result = search_pairs(&keyword).await.unwrap();
+        assert!(!result.pairs.is_empty());
+        let result = result
+            .pairs
+            .into_iter()
+            .map(|i| format!("{}-{}", i.base_token.symbol, i.quote_token.symbol))
+            .collect::<Vec<_>>();
         println!("result: {:#?}", result)
     }
 }
