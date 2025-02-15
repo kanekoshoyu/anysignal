@@ -5,7 +5,7 @@ use signals::adapter::coinmarketcap::prelude::PollingSignalSource;
 use signals::adapter::newsapi::run_news_fetcher;
 use signals::api::host_rest_api_server;
 use signals::config::Config;
-use signals::error::{Result, SignalsError};
+use signals::error::{AnySignalError, Result};
 use tokio::task::JoinHandle;
 
 /// load environment and manages runner at this level
@@ -21,7 +21,7 @@ async fn main() -> Result<()> {
     if config.has_runner("api") {
         println!("Starting API server");
         let handle =
-            tokio::spawn(async move { host_rest_api_server().await }.map_err(SignalsError::from));
+            tokio::spawn(async move { host_rest_api_server().await }.map_err(AnySignalError::from));
         runners.push(handle);
     }
 

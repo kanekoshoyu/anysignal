@@ -3,13 +3,17 @@ use crate::metadata::cargo_package_version;
 use endpoint::Endpoint;
 use poem::{listener::TcpListener, Route, Server};
 use poem_openapi::{OpenApiService, ServerObject};
+use serde_json::Error as SerdeJsonError;
 use thiserror::Error as ThisError;
 use tokio::task::JoinHandle;
-
 #[derive(Debug, ThisError)]
 pub enum ApiError {
     #[error("API Error: {0}")]
     Io(#[from] std::io::Error),
+    #[error("API Error: {0}")]
+    Reqwest(#[from] reqwest::Error),
+    #[error("API Error: {0}")]
+    SerdeJsonError(#[from] SerdeJsonError),
 }
 
 // host a rest api server

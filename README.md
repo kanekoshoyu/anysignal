@@ -1,17 +1,18 @@
-# Signal MFT Indexer
+# AnySignal Indexer
 > PubSub/Get index market data for trading
 
 A trading **strategy** generates **instances** each consisting **legs** based on **signals**.  
 This project first focuses on setting up framework for gathering singals, data visualization and backtesting via QuestDB, then later develop a set of strategies based on these signals. 
 
 ## signals available
-| signal                  | type   | source        | status |
-| ----------------------- | ------ | ------------- | ------ |
-| fear and greed index    | scalar | coinmarketcap | ready  |
-| bitcoin dominance index | scalar | coinmarketcap | WIP    |
-| new token listing       | text   | coinmarketcap | WIP    |
-| news titles             | text   | news api      | WIP    |
-| memecoin price          | scalar | dexscreener   | WIP    |
+| signal                            | type   | source          | status |
+| --------------------------------- | ------ | --------------- | ------ |
+| fear and greed index              | scalar | coinmarketcap   | ready  |
+| bitcoin dominance index           | scalar | coinmarketcap   | WIP    |
+| new token listing                 | text   | coinmarketcap   | WIP    |
+| YouTube live video closed caption | text   | youtube_data_v3 | WIP    |
+| news titles                       | text   | newsapi         | WIP    |
+| memecoin price                    | scalar | dexscreener     | WIP    |
 ## setup
 1. copy config_sample.toml as config.toml, add API keys into the config.toml
 2. set up `questdb` and `grafana` docker containers within same network

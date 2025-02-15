@@ -10,6 +10,8 @@ pub mod config;
 pub mod database;
 /// project error
 pub mod error;
+/// extension
+pub mod extension;
 /// metadata
 pub mod metadata;
 /// project model
