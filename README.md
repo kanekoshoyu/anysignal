@@ -2,17 +2,20 @@
 > PubSub/Get index market data for trading
 
 A trading **strategy** generates **instances** each consisting **legs** based on **signals**.  
-This project first focuses on setting up framework for gathering singals, data visualization and backtesting via QuestDB, then later develop a set of strategies based on these signals. 
+This project first focuses on 
+- setting up framework for gathering signals, data visualization and backtesting via QuestDB
+- study even driven market patterns based on correlation between market scenario, events and prices 
 
 ## signals available
-| signal                            | type   | source          | status |
-| --------------------------------- | ------ | --------------- | ------ |
-| fear and greed index              | scalar | coinmarketcap   | ready  |
-| bitcoin dominance index           | scalar | coinmarketcap   | WIP    |
-| new token listing                 | text   | coinmarketcap   | WIP    |
-| YouTube live video closed caption | text   | youtube_data_v3 | WIP    |
-| news titles                       | text   | newsapi         | WIP    |
-| memecoin price                    | scalar | dexscreener     | WIP    |
+| signal                            | purpose                                      | type   | source          | status |
+| --------------------------------- | -------------------------------------------- | ------ | --------------- | ------ |
+| crypto fear and greed index       | to study market sentiment on crypto          | scalar | coinmarketcap   | ready  |
+| bitcoin dominance index           | to study market sentiment on  BTC vs altcoin | scalar | coinmarketcap   | WIP    |
+| memecoin price                    | to study market sentiment on memecoin        | scalar | dexscreener     | WIP    |
+| new token listing                 | to study new coin enlisting behaviour        | text   | coinmarketcap   | WIP    |
+| YouTube live video closed caption | to obtain fist hand news events              | text   | youtube_data_v3 | WIP    |
+| news titles                       | to obtain generalized news events            | text   | newsapi         | WIP    |
+
 ## setup
 1. copy config_sample.toml as config.toml, add API keys into the config.toml
 2. set up `questdb` and `grafana` docker containers within same network
