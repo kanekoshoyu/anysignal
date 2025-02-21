@@ -29,7 +29,7 @@ pub async fn websocket_client() {
     write.send(message).await.expect("Failed to send message");
 
 
-    let message = Message::Text("{\"action\":\"subscribe\",\"params\":\"AM\".\"AAPL\"}".into());
+    let message = Message::Text("{\"action\":\"subscribe\",\"params\":\"AM.LPL,AM.MSFT,AM.TSLA\"}".into());
     write.send(message).await.expect("Failed to send message");
 
     // Receive and print response
