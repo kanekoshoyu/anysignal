@@ -7,14 +7,16 @@ This project first focuses on
 - study even driven market patterns based on correlation between market scenario, events and prices 
 
 ## signals available
-| signal                            | purpose                                      | type   | source          | status |
-| --------------------------------- | -------------------------------------------- | ------ | --------------- | ------ |
-| crypto fear and greed index       | to study market sentiment on crypto          | scalar | coinmarketcap   | ready  |
-| bitcoin dominance index           | to study market sentiment on  BTC vs altcoin | scalar | coinmarketcap   | WIP    |
-| memecoin price                    | to study market sentiment on memecoin        | scalar | dexscreener     | WIP    |
-| new token listing                 | to study new coin enlisting behaviour        | text   | coinmarketcap   | WIP    |
-| YouTube live video closed caption | to obtain fist hand news events              | text   | youtube_data_v3 | WIP    |
-| news titles                       | to obtain generalized news events            | text   | newsapi         | WIP    |
+| signal                            | purpose                                                 | type   | source                                                      | status  |
+| --------------------------------- | ------------------------------------------------------- | ------ | ----------------------------------------------------------- | ------- |
+| crypto fear and greed index       | to study market sentiment on crypto                     | scalar | [coinmarketcap](https://pro.coinmarketcap.com)              | ready   |
+| bitcoin dominance index           | to study market sentiment on  BTC vs altcoin            | scalar | [coinmarketcap](https://pro.coinmarketcap.com)              | WIP     |
+| new token listing                 | to study new coin enlisting behaviour                   | text   | [coinmarketcap](https://pro.coinmarketcap.com)              | WIP     |
+| memecoin price                    | to study market sentiment on memecoin                   | scalar | [dexscreener](https://docs.dexscreener.com/api/reference)   | WIP     |
+| YouTube live video closed caption | to obtain fist hand news events                         | text   | [youtube_data_v3](https://developers.google.com/youtube/v3) | WIP     |
+| news titles                       | to obtain generalized news events                       | text   | [newsapi](https://newsapi.org)                              | WIP     |
+| news and market sentiments        | to study relationship between news and market sentiment | scalar | [alphavantage](https://www.alphavantage.co)                 | planned |
+| stock market orderbook            | stock market orderbook                                  | text   | [polygon_io](https://polygon.io)                            | planned |
 
 ## setup
 1. copy config_sample.toml as config.toml, add API keys into the config.toml
