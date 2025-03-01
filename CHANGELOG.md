@@ -1,6 +1,10 @@
 # [signal](./README.md) changelog
 > [TODO](./src/README.md)
 
+## [0.2.1]
+### Added
+- (WIP) polygon stock price indexer
+
 ## [0.2.0]
 ### Added
 - questdb insert, select, insert_unique signals
