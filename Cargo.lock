@@ -95,6 +95,33 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "34ac096ce696dc2fcabef30516bb13c0a68a11d30131d3df6f04711467681b04"
 
 [[package]]
+name = "anysignal"
+version = "0.2.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "config",
+ "dotenv",
+ "eyre",
+ "futures",
+ "futures-util",
+ "poem",
+ "poem-openapi",
+ "questdb-rs",
+ "rand 0.8.5",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sqlparser",
+ "thiserror 2.0.11",
+ "tokio",
+ "tokio-tungstenite",
+ "toml",
+ "tracing",
+ "yup-oauth2",
+]
+
+[[package]]
 name = "arraydeque"
 version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2253,33 +2280,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a9e9e0b4211b72e7b8b6e85c807d36c212bdb33ea8587f7569562a84df5465b1"
 dependencies = [
  "libc",
-]
-
-[[package]]
-name = "signals"
-version = "0.2.0"
-dependencies = [
- "async-trait",
- "chrono",
- "config",
- "dotenv",
- "eyre",
- "futures",
- "futures-util",
- "poem",
- "poem-openapi",
- "questdb-rs",
- "rand 0.8.5",
- "reqwest",
- "serde",
- "serde_json",
- "sqlparser",
- "thiserror 2.0.11",
- "tokio",
- "tokio-tungstenite",
- "toml",
- "tracing",
- "yup-oauth2",
 ]
 
 [[package]]

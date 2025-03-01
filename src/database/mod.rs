@@ -3,14 +3,14 @@ pub mod response;
 /// representation of each table
 pub mod table;
 
-use std::collections::HashSet;
-
 use crate::database::table::*;
+use crate::error::AnySignalResult;
 use crate::model::signal::{Signal, SignalData, SignalDataType, SignalInfo};
 use questdb::ingress::{Buffer, Sender, TimestampMicros};
 use questdb::Result as QuestResult;
 use response::QuestDbResponse;
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 
 // batch insert using questdb ingress
 pub fn insert_signal_db(
@@ -54,20 +54,19 @@ pub fn insert_signal_db(
 pub async fn select_signal_db(
     signal_data_type: SignalDataType,
     query_string: impl AsRef<str>,
-) -> QuestResult<Vec<Signal>> {
+) -> AnySignalResult<Vec<Signal>> {
     let client = reqwest::Client::new();
     let response = client
         .get("http://localhost:9000/exec")
         .query(&[("query", query_string.as_ref())])
         .send()
-        .await
-        .unwrap();
-    let text = response.text().await.unwrap();
+        .await?;
+    let text = response.text().await?;
 
     // TODO select type based on the provided signal_data_type
     let signals = match signal_data_type {
         SignalDataType::Simple => {
-            let result: QuestDbResponse<SignalSimpleRow> = serde_json::from_str(&text).unwrap();
+            let result: QuestDbResponse<SignalSimpleRow> = serde_json::from_str(&text)?;
             result
                 .dataset
                 .into_iter()
@@ -79,7 +78,7 @@ pub async fn select_signal_db(
                 .collect()
         }
         SignalDataType::Binary => {
-            let result: QuestDbResponse<SignalBooleanRow> = serde_json::from_str(&text).unwrap();
+            let result: QuestDbResponse<SignalBooleanRow> = serde_json::from_str(&text)?;
             result
                 .dataset
                 .into_iter()
@@ -91,7 +90,7 @@ pub async fn select_signal_db(
                 .collect()
         }
         SignalDataType::Scalar => {
-            let result: QuestDbResponse<SignalScalarRow> = serde_json::from_str(&text).unwrap();
+            let result: QuestDbResponse<SignalScalarRow> = serde_json::from_str(&text)?;
             result
                 .dataset
                 .into_iter()
@@ -103,7 +102,7 @@ pub async fn select_signal_db(
                 .collect()
         }
         SignalDataType::Text => {
-            let result: QuestDbResponse<SignalStringRow> = serde_json::from_str(&text).unwrap();
+            let result: QuestDbResponse<SignalStringRow> = serde_json::from_str(&text)?;
             result
                 .dataset
                 .into_iter()
@@ -126,7 +125,7 @@ pub async fn insert_unique_signal_db(
     signal_info: &SignalInfo,
     signals: &[Signal],
     skip_query_string: impl AsRef<str>,
-) -> QuestResult<usize> {
+) -> AnySignalResult<usize> {
     let signals_to_skip = select_signal_db(signal_info.data_type, skip_query_string).await?;
     let signals_to_skip: HashSet<Signal> = signals_to_skip.into_iter().collect();
 

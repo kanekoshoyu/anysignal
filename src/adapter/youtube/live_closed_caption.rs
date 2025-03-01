@@ -1,9 +1,6 @@
 // polling HTTP live caption data
-
-use crate::extension::reqwest::ResponseExt;
-
 use super::prelude::*;
-use chrono::{DateTime, NaiveDateTime};
+use crate::extension::reqwest::ResponseExt;
 use serde::Deserialize;
 use yup_oauth2::{read_service_account_key, ServiceAccountAuthenticator, ServiceAccountKey};
 
@@ -27,12 +24,12 @@ struct CaptionSnippet {
 // TODO generalize into a SignalFetcher Trait and implement the fetcher for each signal
 #[derive(Debug, Clone, Default)]
 pub struct YouTubeClosedCaptionRequirement {
-    url: String,
-    language: Option<String>,
-    polling_period: tokio::time::Duration,
+    pub url: String,
+    pub language: Option<String>,
+    pub polling_period: tokio::time::Duration,
 }
 
-fn signal_info(requirement: &YouTubeClosedCaptionRequirement) -> SignalInfo {
+pub fn signal_info(requirement: &YouTubeClosedCaptionRequirement) -> SignalInfo {
     SignalInfo {
         id: 4,
         signal_type: format!("youtube_closed_caption_{}", requirement.url),
@@ -46,7 +43,7 @@ fn signal_info(requirement: &YouTubeClosedCaptionRequirement) -> SignalInfo {
 pub async fn run_live_closed_caption_fetcher(
     config: Config,
     requirement: &YouTubeClosedCaptionRequirement,
-) -> Result<()> {
+) -> AnySignalResult<()> {
     let mut interval = tokio::time::interval(requirement.polling_period);
     let api_key = config.get_api_key("youtube_data_v3")?;
 
@@ -68,7 +65,10 @@ fn extract_video_id(url: &str) -> Option<&str> {
 }
 
 /// Fetches closed captions based on the provided requirements.
-pub async fn fetch(api_key: &str, req: &YouTubeClosedCaptionRequirement) -> Result<String> {
+pub async fn fetch(
+    api_key: &str,
+    req: &YouTubeClosedCaptionRequirement,
+) -> AnySignalResult<String> {
     // Extract video ID from the URL
     let video_id = extract_video_id(&req.url).expect("Invalid YouTube URL");
     let path = "./config/oauth.json";
@@ -125,29 +125,6 @@ pub async fn fetch(api_key: &str, req: &YouTubeClosedCaptionRequirement) -> Resu
         .await?;
 
     Ok(caption_response.text().await?)
-}
-
-// TODO implement deserializer for the response
-
-#[derive(Debug, Clone, Deserialize)]
-pub struct NewsApiResponse {
-    articles: Vec<NewsArticle>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct NewsArticle {
-    // e.g. "2024-01-01T12:34:56Z"
-    published_at: String,
-    title: String,
-}
-
-impl NewsArticle {
-    pub fn get_time(&self) -> Option<NaiveDateTime> {
-        DateTime::parse_from_rfc3339(&self.published_at)
-            .ok()
-            .map(|dt| dt.naive_utc())
-    }
 }
 
 mod tests {

@@ -30,7 +30,7 @@ pub enum AnySignalError {
     Quest(QuestError),
 }
 
-pub type Result<T> = std::result::Result<T, AnySignalError>;
+pub type AnySignalResult<T> = std::result::Result<T, AnySignalError>;
 
 impl From<&str> for AnySignalError {
     fn from(error: &str) -> Self {

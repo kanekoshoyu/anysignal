@@ -9,7 +9,7 @@ pub use new_listing::run_signal_new_listing;
 pub mod prelude {
     pub use crate::config::Config;
     use crate::database::insert_signal_db;
-    pub use crate::error::Result;
+    pub use crate::error::AnySignalResult;
     pub use crate::model::signal::*;
     pub const KEY: &str = "X-CMC_PRO_API_KEY";
     pub const SOURCE: &str = "CoinMarketCap";
@@ -24,17 +24,19 @@ pub mod prelude {
 
         fn poll_interval_duration(&self) -> Duration;
 
-        fn get_signals(&self) -> impl std::future::Future<Output = Result<Vec<Signal>>> + Send;
+        fn get_signals(
+            &self,
+        ) -> impl std::future::Future<Output = AnySignalResult<Vec<Signal>>> + Send;
 
         // this gets abtracted out as a PollingSignalSource
-        fn run_loop(&self) -> impl std::future::Future<Output = Result<()>> + Send
+        fn run_loop(&self) -> impl std::future::Future<Output = AnySignalResult<()>> + Send
         where
             Self: Sync,
         {
             async {
                 let mut interval = tokio::time::interval(self.poll_interval_duration());
                 let signal_info = self.get_signal_info();
-                let mut sender = Sender::from_conf("http::addr=localhost:9000;").unwrap();
+                let mut sender = Sender::from_conf("http::addr=localhost:9000;")?;
                 loop {
                     let signals = self.get_signals().await?;
                     insert_signal_db(&mut sender, &signal_info, &signals)?;

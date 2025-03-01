@@ -1,9 +1,9 @@
-use crate::error::Result;
+use crate::error::AnySignalResult;
 use futures::SinkExt;
 use futures::StreamExt;
 use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
 
-pub async fn run_polygonio_stock(api_key: String) -> Result<()> {
+pub async fn run_polygonio_stock(api_key: String) -> AnySignalResult<()> {
     let url = "wss://delayed.polygon.io/stocks";
 
     // Establish WebSocket connection
@@ -42,7 +42,7 @@ pub async fn run_polygonio_stock(api_key: String) -> Result<()> {
 mod tests {
     #[tokio::test]
     async fn test_stock() {
-        // 
+        //
         use super::*;
         let url = "wss://delayed.polygon.io/stocks";
         let result = connect_async(url).await;

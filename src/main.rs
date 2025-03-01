@@ -1,23 +1,23 @@
+use anysignal::adapter::coinmarketcap::fear_and_greed::FearAndGreedSignalSource;
+use anysignal::adapter::coinmarketcap::prelude::PollingSignalSource;
+use anysignal::adapter::newsapi::run_news_fetcher;
+use anysignal::adapter::polygonio::run_polygonio_stock;
+use anysignal::api::host_rest_api_server;
+use anysignal::config::Config;
+use anysignal::error::{AnySignalError, AnySignalResult};
 use futures::future::join_all;
 use futures::TryFutureExt;
-use signals::adapter::coinmarketcap::fear_and_greed::FearAndGreedSignalSource;
-use signals::adapter::coinmarketcap::prelude::PollingSignalSource;
-use signals::adapter::newsapi::run_news_fetcher;
-use signals::adapter::polygonio::run_polygonio_stock;
-use signals::api::host_rest_api_server;
-use signals::config::Config;
-use signals::error::{AnySignalError, Result};
 use tokio::task::JoinHandle;
 
 /// load environment and manages runner at this level
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> AnySignalResult<()> {
     // set up config to load API tokens
     let config: Config = Config::from_path("config.toml")?;
     println!("Config: {:#?}", config);
 
     // each runner returns signals::error::Result<()>
-    let mut runners: Vec<JoinHandle<Result<()>>> = Vec::new();
+    let mut runners: Vec<JoinHandle<AnySignalResult<()>>> = Vec::new();
 
     if config.has_runner("api") {
         println!("Starting API server");

@@ -6,7 +6,7 @@ use reqwest::header::USER_AGENT;
 use serde::Deserialize;
 
 // TODO generalize into a SignalFetcher Trait and implement the fetcher for each signal
-fn signal_info() -> SignalInfo {
+pub fn signal_info() -> SignalInfo {
     SignalInfo {
         id: 4,
         signal_type: "news".to_string(),
@@ -17,7 +17,10 @@ fn signal_info() -> SignalInfo {
     }
 }
 
-pub async fn run_news_fetcher(config: Config, period: tokio::time::Duration) -> Result<()> {
+pub async fn run_news_fetcher(
+    config: Config,
+    period: tokio::time::Duration,
+) -> AnySignalResult<()> {
     let mut interval = tokio::time::interval(period);
     let api_key = config.get_api_key("newsapi")?;
 
@@ -31,7 +34,7 @@ pub async fn run_news_fetcher(config: Config, period: tokio::time::Duration) -> 
     }
 }
 
-async fn fetch(api_key: &str) -> Result<NewsApiResponse> {
+async fn fetch(api_key: &str) -> AnySignalResult<NewsApiResponse> {
     let client = reqwest::Client::new();
     let url = "https://newsapi.org/v2/everything?q=bitcoin&sortBy=publishedAt&apiKey=";
 
@@ -40,9 +43,8 @@ async fn fetch(api_key: &str) -> Result<NewsApiResponse> {
         .get(format!("{}{}", url, api_key))
         .header(USER_AGENT, AGENT)
         .send()
-        .await
-        .unwrap();
-    let response = response.text().await.unwrap();
+        .await?;
+    let response = response.text().await?;
     println!("response: {response:?}");
     serde_json::from_str::<NewsApiResponse>(&response).map_err(|_| AdapterError::Parser.into())
 }
@@ -58,8 +60,8 @@ pub struct NewsApiResponse {
 #[serde(rename_all = "camelCase")]
 pub struct NewsArticle {
     // e.g. "2024-01-01T12:34:56Z"
-    published_at: String,
-    title: String,
+    pub published_at: String,
+    pub title: String,
 }
 
 impl NewsArticle {

@@ -1,7 +1,7 @@
 use super::prelude::*;
 
 /// free tier
-pub async fn run_signal_new_listing() -> Result<()> {
+pub async fn run_signal_new_listing() -> AnySignalResult<()> {
     // historic listing
     todo!("implement new listing");
     // let url = "https://pro-api.coinmarketcap.com/v1/cryptocurrency/listings/latest";
