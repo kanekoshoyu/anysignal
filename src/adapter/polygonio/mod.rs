@@ -1,6 +1,6 @@
-pub mod client;
+pub mod stock;
 
-pub use client::websocket_client;
+pub use stock::run_polygonio_stock;
 
 pub mod prelude {
     pub use crate::config::Config;

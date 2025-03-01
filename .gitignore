@@ -1,4 +1,4 @@
 /target
-config.toml
-/config
 .env
+/config
+config.toml
