@@ -8,5 +8,7 @@ pub mod newsapi;
 pub mod youtube;
 // adapter error
 pub mod error;
+// PolygonIO
+pub mod polygonio;
 
 pub use error::AdapterError;

@@ -12,7 +12,10 @@ fn signal_info() -> SignalInfo {
 }
 
 // TODO set up the global source to replace the config
-pub async fn run_bitcoin_dominance(config: Config, period: tokio::time::Duration) -> Result<()> {
+pub async fn run_bitcoin_dominance(
+    config: Config,
+    period: tokio::time::Duration,
+) -> AnySignalResult<()> {
     let signal = signal_info();
     let mut interval = tokio::time::interval(period);
     let client = reqwest::Client::new();
@@ -22,8 +25,15 @@ pub async fn run_bitcoin_dominance(config: Config, period: tokio::time::Duration
 
     loop {
         interval.tick().await; // Wait for the next tick
-        let response = client.get(url).header(KEY, &key_cmc).send().await.unwrap();
-        let text = response.text().await.unwrap();
+
+        let _response = client
+            .get(url)
+            .header(KEY, &key_cmc)
+            .send()
+            .await?
+            .text()
+            .await?;
+
         // write a parser for the response
         println!("{:?}", &signal.description);
     }

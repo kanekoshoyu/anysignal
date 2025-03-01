@@ -1,22 +1,23 @@
+use anysignal::adapter::coinmarketcap::fear_and_greed::FearAndGreedSignalSource;
+use anysignal::adapter::coinmarketcap::prelude::PollingSignalSource;
+use anysignal::adapter::newsapi::run_news_fetcher;
+use anysignal::adapter::polygonio::run_polygonio_stock;
+use anysignal::api::host_rest_api_server;
+use anysignal::config::Config;
+use anysignal::error::{AnySignalError, AnySignalResult};
 use futures::future::join_all;
 use futures::TryFutureExt;
-use signals::adapter::coinmarketcap::fear_and_greed::FearAndGreedSignalSource;
-use signals::adapter::coinmarketcap::prelude::PollingSignalSource;
-use signals::adapter::newsapi::run_news_fetcher;
-use signals::api::host_rest_api_server;
-use signals::config::Config;
-use signals::error::{AnySignalError, Result};
 use tokio::task::JoinHandle;
 
 /// load environment and manages runner at this level
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> AnySignalResult<()> {
     // set up config to load API tokens
     let config: Config = Config::from_path("config.toml")?;
-    println!("Config: {:?}", config);
+    println!("Config: {:#?}", config);
 
     // each runner returns signals::error::Result<()>
-    let mut runners: Vec<JoinHandle<Result<()>>> = Vec::new();
+    let mut runners: Vec<JoinHandle<AnySignalResult<()>>> = Vec::new();
 
     if config.has_runner("api") {
         println!("Starting API server");
@@ -44,10 +45,21 @@ async fn main() -> Result<()> {
         runners.push(handle);
     }
 
-    for result in join_all(runners).await {
-        if let Err(e) = result {
-            println!("error: {:?}", e);
-        };
+    if config.has_runner("polygonio") {
+        println!("Starting PolygonIO indexer");
+        let config = config.clone();
+        let api_key = config.get_api_key("polygonio")?;
+        let handle = tokio::spawn(async move { run_polygonio_stock(api_key).await });
+        runners.push(handle);
     }
+
+    for result in join_all(runners).await {
+        match result {
+            Ok(Ok(())) => {}
+            Ok(Err(e)) => println!("indexer error: {:?}", e),
+            Err(e) => println!("join error: {:?}", e),
+        }
+    }
+    println!("exit program gracefully");
     Ok(())
 }

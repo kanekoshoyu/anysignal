@@ -2,17 +2,21 @@
 runner = [
     "api",
     "coinmarketcap",
-    # "newsapi"
+    # "newsapi",
     "youtube_data_v3",
+    "polygonio",
 ]
 
 # replace below with your own API key
 [[api_keys]]
 id = "coinmarketcap"
-key = "<COINMARKETCAP_API_KEY>"
+key = "<API_KEY>"
 [[api_keys]]
 id = "newsapi"
-key = "<NEWSAPI_API_KEY>"
+key = "<API_KEY>"
 [[api_keys]]
 id = "youtube_data_v3"
-key = "<YOUTUBE_DATA_V3_API_KEY>"
+key = "<API_KEY>"
+[[api_keys]]
+id = "polygonio"
+key = "<API_KEY>"

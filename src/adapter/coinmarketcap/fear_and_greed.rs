@@ -40,13 +40,13 @@ impl PollingSignalSource for FearAndGreedSignalSource {
         self.poll_interval_duration
     }
 
-    async fn get_signals(&self) -> Result<Vec<Signal>> {
+    async fn get_signals(&self) -> AnySignalResult<Vec<Signal>> {
         let response = fetch_fear_and_greed_index(&self.api_key).await?;
 
         let mut signals = Vec::new();
         for data in response.data {
             let signal = Signal {
-                timestamp_us: data.timestamp_micros().unwrap(),
+                timestamp_us: data.timestamp_micros().unwrap_or_default(),
                 data: SignalData::Scalar(data.value),
                 info_id: self.get_signal_info().id,
             };
@@ -58,13 +58,16 @@ impl PollingSignalSource for FearAndGreedSignalSource {
 }
 
 // Function to fetch the Fear and Greed Index
-async fn fetch_fear_and_greed_index(key_cmc: &str) -> Result<FearAndGreedIndexResponse> {
+async fn fetch_fear_and_greed_index(key_cmc: &str) -> AnySignalResult<FearAndGreedIndexResponse> {
     let url = "https://pro-api.coinmarketcap.com/v3/fear-and-greed/historical";
-    let client = reqwest::Client::new();
-    let response = client.get(url).header(KEY, key_cmc).send().await.unwrap();
-    let response = response.text().await.unwrap();
-    let response = serde_json::from_str::<FearAndGreedIndexResponse>(&response).unwrap();
-    Ok(response)
+    reqwest::Client::new()
+        .get(url)
+        .header(KEY, key_cmc)
+        .send()
+        .await?
+        .json::<FearAndGreedIndexResponse>()
+        .await
+        .map_err(|e| e.into())
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -81,7 +84,7 @@ pub struct FearAndGreedIndexData {
 }
 impl FearAndGreedIndexData {
     pub fn timestamp_micros(&self) -> Option<i64> {
-        let timestamp_sec = self.timestamp.parse::<i64>().unwrap();
+        let timestamp_sec = self.timestamp.parse::<i64>().ok()?;
         Some(timestamp_sec * 1_000_000)
     }
 

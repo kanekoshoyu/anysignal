@@ -4,7 +4,9 @@ pub use questdb::Error as QuestError;
 pub use reqwest::Error as ReqwestError;
 pub use std::io::Error as IoError;
 pub use thiserror::Error as ThisError;
+pub use tokio_tungstenite::tungstenite::Error as TungError;
 pub use toml::de::Error as TomlError;
+
 #[derive(Debug, ThisError)]
 pub enum ConfigError {
     #[error("Failed to read config file: {0}")]
@@ -28,7 +30,13 @@ pub enum AnySignalError {
     Quest(QuestError),
 }
 
-pub type Result<T> = std::result::Result<T, AnySignalError>;
+pub type AnySignalResult<T> = std::result::Result<T, AnySignalError>;
+
+impl From<&str> for AnySignalError {
+    fn from(error: &str) -> Self {
+        AnySignalError::Generic(eyre::eyre!("{error}"))
+    }
+}
 
 impl From<EyreError> for AnySignalError {
     fn from(error: EyreError) -> Self {
@@ -39,12 +47,6 @@ impl From<EyreError> for AnySignalError {
 impl From<serde_json::Error> for AnySignalError {
     fn from(error: serde_json::Error) -> Self {
         AnySignalError::Api(error.into())
-    }
-}
-
-impl From<&str> for AnySignalError {
-    fn from(error: &str) -> Self {
-        AnySignalError::Generic(eyre::eyre!("{error}"))
     }
 }
 
@@ -75,5 +77,11 @@ impl From<QuestError> for AnySignalError {
 impl From<ReqwestError> for AnySignalError {
     fn from(error: ReqwestError) -> Self {
         AnySignalError::Api(error.into())
+    }
+}
+
+impl From<TungError> for AnySignalError {
+    fn from(_: TungError) -> Self {
+        AnySignalError::Adapter(AdapterError::Connection)
     }
 }

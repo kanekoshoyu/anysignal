@@ -1,16 +1,15 @@
-use crate::adapter::error::AdapterResult;
+use crate::error::AnySignalResult;
 use serde::{Deserialize, Serialize};
-
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
-struct DexSearchPairsReponse {
+pub struct DexSearchPairsReponse {
     schema_version: String,
     pairs: Vec<DexTokenInfo>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
-struct DexTokenInfo {
+pub struct DexTokenInfo {
     chain_id: String,
     dex_id: String,
     url: String,
@@ -97,28 +96,29 @@ struct Social {
 }
 
 // fetch token info based on chain_id and token_id
-async fn fetch_token_info(chain_id: &str, token_id: &str) -> AdapterResult<Vec<DexTokenInfo>> {
+pub async fn fetch_token_info(
+    chain_id: &str,
+    token_id: &str,
+) -> AnySignalResult<Vec<DexTokenInfo>> {
     let url = format!("https://api.dexscreener.com/tokens/v1/{chain_id}/{token_id}");
-    let client = reqwest::Client::new();
-    let response = client.get(url).send().await.unwrap();
-    let response = response.text().await.unwrap();
-    let response = serde_json::from_str::<Vec<DexTokenInfo>>(&response).unwrap();
+
+    let response = reqwest::Client::new()
+        .get(url)
+        .send()
+        .await?
+        .json::<Vec<DexTokenInfo>>()
+        .await?;
+
     Ok(response)
 }
 
 // fetch relevant pairs based on a keyword
-async fn search_pairs(keyword: &str) -> AdapterResult<DexSearchPairsReponse> {
-    let url = format!("https://api.dexscreener.com/latest/dex/search");
+pub async fn search_pairs(keyword: &str) -> AnySignalResult<DexSearchPairsReponse> {
+    let url = "https://api.dexscreener.com/latest/dex/search";
     let client = reqwest::Client::new();
-    let response = client
-        .get(url)
-        .query(&[("q", keyword)])
-        .send()
-        .await
-        .unwrap();
-    let response = response.text().await.unwrap();
-    let response = serde_json::from_str::<DexSearchPairsReponse>(&response).unwrap();
-    Ok(response)
+    let response = client.get(url).query(&[("q", keyword)]).send().await?;
+    let response = response.text().await?;
+    serde_json::from_str::<DexSearchPairsReponse>(&response).map_err(|_| "parse error".into())
 }
 
 #[cfg(test)]
