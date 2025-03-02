@@ -15,8 +15,9 @@ This project first focuses on
 | memecoin price                    | to study market sentiment on memecoin                   | scalar | [dexscreener](https://docs.dexscreener.com/api/reference)   | WIP     |
 | YouTube live video closed caption | to obtain fist hand news events                         | text   | [youtube_data_v3](https://developers.google.com/youtube/v3) | WIP     |
 | news titles                       | to obtain generalized news events                       | text   | [newsapi](https://newsapi.org)                              | WIP     |
+| stock market orderbook            | to index stock market orderbook                         | text   | [polygonio](https://polygon.io)                             | WIP     |
 | news and market sentiments        | to study relationship between news and market sentiment | scalar | [alphavantage](https://www.alphavantage.co)                 | planned |
-| stock market orderbook            | stock market orderbook                                  | text   | [polygon_io](https://polygon.io)                            | planned |
+| microstrategy btc holding         | to index real time MSTR BTC holdings                    | text   | [strategy](https://www.strategy.com/purchases)              | WIP     |
 
 ## setup
 1. copy config_sample.toml as config.toml, add API keys into the config.toml

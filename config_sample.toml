@@ -1,10 +1,11 @@
 # NOTE to run the program, please make a copy of this file and name it as config.toml
 runner = [
-    "api",
-    "coinmarketcap",
+    # "api",
+    # "coinmarketcap",
     # "newsapi",
-    "youtube_data_v3",
+    # "youtube_data_v3",
     "polygonio",
+    "alphavantage",
 ]
 
 # replace below with your own API key
@@ -19,4 +20,7 @@ id = "youtube_data_v3"
 key = "<API_KEY>"
 [[api_keys]]
 id = "polygonio"
+key = "<API_KEY>"
+[[api_keys]]
+id = "alphavantage"
 key = "<API_KEY>"

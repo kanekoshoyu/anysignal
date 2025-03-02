@@ -6,6 +6,8 @@ pub mod dexscreener;
 pub mod newsapi;
 // YouTube
 pub mod youtube;
+// MicroStrategy
+pub mod microstrategy;
 // adapter error
 pub mod error;
 // PolygonIO
