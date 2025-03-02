@@ -2,7 +2,7 @@
 use super::prelude::*;
 use crate::extension::reqwest::ResponseExt;
 use serde::Deserialize;
-use yup_oauth2::{read_service_account_key, ServiceAccountAuthenticator, ServiceAccountKey};
+use yup_oauth2::{read_service_account_key, ServiceAccountAuthenticator};
 
 #[derive(Deserialize, Debug)]
 struct CaptionListResponse {
@@ -70,7 +70,7 @@ pub async fn fetch(
     req: &YouTubeClosedCaptionRequirement,
 ) -> AnySignalResult<String> {
     // Extract video ID from the URL
-    let video_id = extract_video_id(&req.url).expect("Invalid YouTube URL");
+    let video_id = extract_video_id(&req.url).ok_or("Invalid YouTube URL")?;
     let path = "./config/oauth.json";
     let key = match read_service_account_key(path).await {
         Ok(key) => key,
@@ -81,13 +81,13 @@ pub async fn fetch(
     let auth = ServiceAccountAuthenticator::builder(key)
         .build()
         .await
-        .expect("Failed to create authenticator");
+        .map_err(|_| "Failed to create authenticator")?;
 
     // Get an access token
     let token = auth
         .token(&["https://www.googleapis.com/auth/youtube.force-ssl"])
         .await
-        .expect("Failed to get access token");
+        .map_err(|_| "Failed to get access token")?;
 
     // List available captions for the video
     let url_base = "https://www.googleapis.com/youtube/v3";
