@@ -24,3 +24,9 @@ key = "<API_KEY>"
 [[api_keys]]
 id = "alphavantage"
 key = "<API_KEY>"
+[[api_keys]]
+id = "ustreasury"
+key = "<API_KEY>"
+[[api_keys]]
+id = "secapi"
+key = "<API_KEY>"

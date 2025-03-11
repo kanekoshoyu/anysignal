@@ -12,6 +12,8 @@ pub mod microstrategy;
 pub mod error;
 // PolygonIO
 pub mod polygonio;
+// SEC API
+pub mod secapi;
 
 pub use error::{AdapterError, AdapterResult};
 
