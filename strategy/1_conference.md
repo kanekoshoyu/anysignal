@@ -6,6 +6,11 @@
 - study tech launch events and earnings press release events 
 
 ## data
+| signal                              | type   | source             |
+| ----------------------------------- | ------ | ------------------ |
+| tech conferences and product launch | vector | manual aggregation |
+| stock prices                        | scalar | polygonio          |
+
 below are magnificent 7 stock companies' tech launch events
 
 ### 2024

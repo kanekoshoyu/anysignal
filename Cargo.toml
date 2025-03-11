@@ -13,19 +13,17 @@ unreachable = "warn"
 [dependencies]
 async-trait = "0.1.86"
 chrono = { version = "0.4.40", features = ["serde"] }
-config = "0.15.8"
-dotenv = "0.15"
 eyre = "0.6.5"
 futures = "0.3.0"
 futures-util = "0.3"
-poem = { version = "3.0.0", features = ["rustls", "anyhow", "session", "opentelemetry", "prometheus"] }
-poem-openapi = { version = "5.1.4", features = ["chrono", "swagger-ui", "rapidoc", "redoc", "openapi-explorer"] }
+poem = { version = "3.1.7", features = ["rustls", "anyhow", "session", "opentelemetry", "prometheus"] }
+poem-openapi = { version = "5.1.8", features = ["chrono", "swagger-ui", "rapidoc", "redoc", "openapi-explorer"] }
 questdb-rs = "4.0.3"
 rand = "0.8.0"
+regex = "1.11.1"
 reqwest = { version = "0.12.12", features = ["json"] }
 serde = { version = "1.0.0", features = ["derive"] }
 serde_json = "1.0.137"
-sqlparser = "0.54.0"
 thiserror = "2.0.11"
 tokio = { version = "1", features = ["full"] }
 tokio-tungstenite = { version = "0.26.2", features = ["rustls-tls-native-roots"] }
