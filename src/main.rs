@@ -13,7 +13,7 @@ use tokio::task::JoinHandle;
 #[tokio::main]
 async fn main() -> AnySignalResult<()> {
     // set up config to load API tokens
-    let config: Config = Config::from_path("config.toml")?;
+    let config: Config = Config::from_env();
     println!("Config: {:#?}", config);
 
     // each runner returns signals::error::Result<()>
