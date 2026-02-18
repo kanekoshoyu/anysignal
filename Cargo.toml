@@ -30,3 +30,8 @@ tokio-tungstenite = { version = "0.26.2", features = ["rustls-tls-native-roots"]
 toml = "0.8.20"
 tracing = "0.1.0"
 yup-oauth2 = "12.1.0"
+aws-config = "1.5.9"
+aws-sdk-s3 = "1.67.0"
+aws-smithy-types = "1.2.12"
+dotenvy = "0.15.7"
+lz4 = "1.25.0"
