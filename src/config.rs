@@ -1,20 +1,54 @@
-use crate::error::ConfigError;
-use serde::Deserialize;
 use std::env;
-use std::path::Path;
 
-// config file parser
-#[derive(Debug, Clone, Deserialize)]
+/// Runtime configuration loaded entirely from environment variables.
+///
+/// # Environment variables
+///
+/// ## Runners
+/// `RUNNERS` — comma-separated list of subsystems to start.
+///
+/// | Value           | Description                                      |
+/// |-----------------|--------------------------------------------------|
+/// | `api`           | REST API server (port 3000)                      |
+/// | `coinmarketcap` | Fear & Greed / BTC dominance poller              |
+/// | `newsapi`       | News headline fetcher                            |
+/// | `polygonio`     | Stock market orderbook indexer                   |
+///
+/// Example: `RUNNERS=api,coinmarketcap`
+///
+/// ## API keys
+/// Each runner reads its key from `API_KEY_<ID>` (uppercase).
+///
+/// | Variable                  | Runner          |
+/// |---------------------------|-----------------|
+/// | `API_KEY_COINMARKETCAP`   | coinmarketcap   |
+/// | `API_KEY_NEWSAPI`         | newsapi         |
+/// | `API_KEY_YOUTUBE_DATA_V3` | youtube_data_v3 |
+/// | `API_KEY_POLYGONIO`       | polygonio       |
+/// | `API_KEY_ALPHAVANTAGE`    | alphavantage    |
+/// | `API_KEY_USTREASURY`      | ustreasury      |
+/// | `API_KEY_SECAPI`          | secapi          |
+///
+/// ## QuestDB
+/// | Variable            | Description                                  | Default                       |
+/// |---------------------|----------------------------------------------|-------------------------------|
+/// | `QUESTDB_ADDR`      | `host:port` of the HTTP ingress              | `questdb.bounteer.com:9000`   |
+/// | `QUESTDB_USER`      | Username (omit if auth disabled)             | —                             |
+/// | `QUESTDB_PASSWORD`  | Password (omit if auth disabled)             | —                             |
+///
+/// ## AWS / Hyperliquid S3 (backfill endpoint)
+/// | Variable                   | Description                        | Default              |
+/// |----------------------------|------------------------------------|----------------------|
+/// | `AWS_ACCESS_KEY_ID`        | AWS access key                     | —                    |
+/// | `AWS_SECRET_ACCESS_KEY`    | AWS secret key                     | —                    |
+/// | `AWS_REGION`               | AWS region                         | `ap-northeast-1`     |
+/// | `HYPERLIQUID_S3_BUCKET`    | S3 bucket for historic data        | `hyperliquid-archive`|
+#[derive(Debug, Clone)]
 pub struct Config {
-    api_keys: Vec<ApiKey>, // Array of API keys
-    runner: Vec<String>,   // runners
+    runner: Vec<String>,
 }
 
 impl Config {
-    /// Load config from environment variables.
-    ///
-    /// - `RUNNERS` — comma-separated list of runners to enable, e.g. `api,coinmarketcap`
-    /// - `API_KEY_<ID>` — API key for each runner, e.g. `API_KEY_COINMARKETCAP`
     pub fn from_env() -> Self {
         dotenvy::dotenv().ok();
         let runners = env::var("RUNNERS").unwrap_or_default();
@@ -23,46 +57,18 @@ impl Config {
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty())
             .collect();
-        Self {
-            runner,
-            api_keys: Vec::new(), // keys are read on-demand via get_api_key
-        }
+        Self { runner }
     }
 
-    /// Load config from a TOML file (used in local development and tests).
-    pub fn from_path<P: AsRef<Path>>(path: P) -> Result<Self, ConfigError> {
-        let file_path = path.as_ref();
-        let config_content = std::fs::read_to_string(file_path)?;
-        toml::from_str(&config_content).map_err(ConfigError::Toml)
-    }
-
-    /// Get an API key by runner id.
-    ///
-    /// When loaded via `from_env`, keys are resolved from `API_KEY_<ID>` env
-    /// vars (e.g. `API_KEY_COINMARKETCAP`).  When loaded via `from_path` the
-    /// inline `api_keys` table is used as a fallback.
+    /// Look up an API key for the given runner id.
+    /// Reads `API_KEY_<ID>` from the environment (e.g. `API_KEY_COINMARKETCAP`).
     pub fn get_api_key(&self, id: &str) -> Result<String, eyre::Error> {
         let env_var = format!("API_KEY_{}", id.to_uppercase().replace('-', "_"));
-        if let Ok(val) = env::var(&env_var) {
-            return Ok(val);
-        }
-        self.api_keys
-            .iter()
-            .find(|key| key.id == id)
-            .map(|key| key.key.clone())
-            .ok_or_else(|| eyre::eyre!("API key not found: set {} env var", env_var))
+        env::var(&env_var)
+            .map_err(|_| eyre::eyre!("env var {} not set", env_var))
     }
 
-    // check if a runner has been set
     pub fn has_runner(&self, id: &str) -> bool {
-        self.runner.iter().any(|runner| runner == id)
+        self.runner.iter().any(|r| r == id)
     }
-}
-
-#[derive(Debug, Clone, Deserialize)]
-pub struct ApiKey {
-    /// API key identifier
-    id: String,
-    /// Actual API key
-    key: String,
 }

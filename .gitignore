@@ -1,4 +1,4 @@
 /target
 .env
 /config
-config.toml
+# config.toml no longer used — everything is configured via env vars

@@ -196,7 +196,7 @@ mod tests {
     #[tokio::test]
     async fn test_live_closed_caption_fetcher() {
         use form4::*;
-        let config: Config = Config::from_path("config.toml").unwrap();
+        let config: Config = Config::from_env();
         let api_key = config.get_api_key("youtube_data_v3").unwrap();
         dbg!(&api_key);
 

@@ -76,7 +76,7 @@ mod tests {
     #[tokio::test]
     async fn test_news_fetcher() {
         use super::*;
-        let config: Config = Config::from_path("config.toml").unwrap();
+        let config: Config = Config::from_env();
         let api_key = config.get_api_key("newsapi").unwrap();
         let data = fetch(&api_key).await.unwrap();
         println!("{data:#?}");

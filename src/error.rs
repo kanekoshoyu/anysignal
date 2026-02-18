@@ -2,26 +2,14 @@ use crate::{adapter::AdapterError, api::rest::ApiError};
 pub use eyre::Error as EyreError;
 pub use questdb::Error as QuestError;
 pub use reqwest::Error as ReqwestError;
-pub use std::io::Error as IoError;
 pub use thiserror::Error as ThisError;
 pub use tokio_tungstenite::tungstenite::Error as TungError;
-pub use toml::de::Error as TomlError;
-
-#[derive(Debug, ThisError)]
-pub enum ConfigError {
-    #[error("Failed to read config file: {0}")]
-    Io(#[from] std::io::Error),
-    #[error("Failed to parse TOML: {0}")]
-    Toml(#[from] TomlError),
-}
 
 // project error
 #[derive(Debug, ThisError)]
 pub enum AnySignalError {
     #[error("generic error: {0}")]
     Generic(EyreError),
-    #[error("conifg error: {0}")]
-    Config(ConfigError),
     #[error("api error: {0}")]
     Api(ApiError),
     #[error("adapter error: {0}")]
@@ -47,12 +35,6 @@ impl From<EyreError> for AnySignalError {
 impl From<serde_json::Error> for AnySignalError {
     fn from(error: serde_json::Error) -> Self {
         AnySignalError::Api(error.into())
-    }
-}
-
-impl From<ConfigError> for AnySignalError {
-    fn from(error: ConfigError) -> Self {
-        AnySignalError::Config(error)
     }
 }
 
