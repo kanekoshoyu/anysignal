@@ -35,10 +35,8 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /app
 
 COPY --from=builder /app/target/release/anysignal ./
-COPY docker-entrypoint.sh ./
-RUN chmod +x docker-entrypoint.sh
 
 # REST API port (see src/api/rest/mod.rs)
 EXPOSE 3000
 
-ENTRYPOINT ["./docker-entrypoint.sh"]
+CMD ["/app/anysignal"]
