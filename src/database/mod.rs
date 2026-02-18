@@ -3,6 +3,7 @@ pub mod response;
 /// representation of each table
 pub mod table;
 
+use crate::adapter::hyperliquid_s3::asset_ctxs::AssetCtxRow;
 use crate::database::table::*;
 use crate::error::AnySignalResult;
 use crate::model::signal::{Signal, SignalData, SignalDataType, SignalInfo};
@@ -11,6 +12,7 @@ use questdb::Result as QuestResult;
 use response::QuestDbResponse;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
+use std::env;
 
 // batch insert using questdb ingress
 pub fn insert_signal_db(
@@ -137,6 +139,95 @@ pub async fn insert_unique_signal_db(
     }
     Ok(len)
 }
+// ---------------------------------------------------------------------------
+// QuestDB connection factory
+// ---------------------------------------------------------------------------
+
+/// Build a [`Sender`] from environment variables.
+///
+/// Required env:
+/// - `QUESTDB_ADDR` — `host:port` of the QuestDB HTTP ingress (port 9000)
+///
+/// Optional env (leave unset when auth is disabled):
+/// - `QUESTDB_USER`
+/// - `QUESTDB_PASSWORD`
+pub fn questdb_sender() -> QuestResult<Sender> {
+    dotenvy::dotenv().ok();
+    let addr =
+        env::var("QUESTDB_ADDR").unwrap_or_else(|_| "questdb.bounteer.com:9000".to_string());
+
+    let conf = match (env::var("QUESTDB_USER"), env::var("QUESTDB_PASSWORD")) {
+        (Ok(user), Ok(pass)) => {
+            format!("http::addr={};username={};password={};", addr, user, pass)
+        }
+        _ => format!("http::addr={};", addr),
+    };
+
+    Sender::from_conf(conf)
+}
+
+// ---------------------------------------------------------------------------
+// Hyperliquid asset_ctxs ingestion
+// ---------------------------------------------------------------------------
+
+/// Batch-insert a slice of [`AssetCtxRow`]s into the `market_data` table.
+///
+/// Each source row is fanned out into one `market_data` row per metric so the
+/// generic (ts, category, ticker, source, value) schema is preserved.
+///
+/// Metrics written per row:
+///   open_interest, funding, mark_px, oracle_px, prev_day_px, day_ntl_vlm,
+///   mid_px (skipped when None), premium (skipped when None).
+pub fn insert_asset_ctxs(sender: &mut Sender, rows: &[AssetCtxRow]) -> QuestResult<()> {
+    let mut buffer = Buffer::new();
+
+    for row in rows {
+        let ts_us = TimestampMicros::new(row.time * 1_000); // ms → µs
+
+        let metrics: &[(&str, f64)] = &[
+            ("open_interest", row.open_interest),
+            ("funding", row.funding),
+            ("mark_px", row.mark_px),
+            ("oracle_px", row.oracle_px),
+            ("prev_day_px", row.prev_day_px),
+            ("day_ntl_vlm", row.day_ntl_vlm),
+        ];
+
+        for (category, value) in metrics {
+            buffer
+                .table("market_data")?
+                .symbol("category", category)?
+                .symbol("ticker", &row.coin)?
+                .symbol("source", "HYPERLIQUID_S3")?
+                .column_f64("value", *value)?
+                .at(ts_us)?;
+        }
+
+        if let Some(v) = row.mid_px {
+            buffer
+                .table("market_data")?
+                .symbol("category", "mid_px")?
+                .symbol("ticker", &row.coin)?
+                .symbol("source", "HYPERLIQUID_S3")?
+                .column_f64("value", v)?
+                .at(ts_us)?;
+        }
+
+        if let Some(v) = row.premium {
+            buffer
+                .table("market_data")?
+                .symbol("category", "premium")?
+                .symbol("ticker", &row.coin)?
+                .symbol("source", "HYPERLIQUID_S3")?
+                .column_f64("value", v)?
+                .at(ts_us)?;
+        }
+    }
+
+    sender.flush(&mut buffer)?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use chrono::Utc;
