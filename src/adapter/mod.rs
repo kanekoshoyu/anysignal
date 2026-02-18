@@ -14,6 +14,8 @@ pub mod error;
 pub mod polygonio;
 // SEC API
 pub mod secapi;
+// Hyperliquid S3
+pub mod hyperliquid_s3;
 
 pub use error::{AdapterError, AdapterResult};
 
