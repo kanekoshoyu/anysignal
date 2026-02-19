@@ -1,5 +1,5 @@
 # ── Build stage ──────────────────────────────────────────────────────────────
-FROM rust:1-slim-bookworm AS builder
+FROM rustlang/rust:nightly AS builder
 
 # install SSL and LZ4
 RUN apt-get update && apt-get install -y \
@@ -25,7 +25,7 @@ RUN cargo build --release --bin anysignal
 
 
 # ── Runtime stage ─────────────────────────────────────────────────────────────
-FROM debian:bookworm-slim AS runtime
+FROM rustlang/rust:nightly AS runtime
 
 # install SSL and LZ4
 RUN apt-get update && apt-get install -y \

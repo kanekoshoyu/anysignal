@@ -3,6 +3,7 @@ use crate::database::{insert_asset_ctxs, questdb_sender};
 use crate::metadata::cargo_package_version;
 use chrono::NaiveDate;
 use poem_openapi::{
+    param::Query,
     payload::{Json, PlainText},
     ApiResponse, Enum, Object, OpenApi,
 };
@@ -23,18 +24,7 @@ enum BackfillSource {
     HyperliquidAssetCtxs,
 }
 
-/// Request body for `POST /backfill`.
-#[derive(Debug, Object)]
-struct BackfillRequest {
-    /// First date to fetch, **inclusive** (e.g. `2024-01-01`).
-    from: NaiveDate,
-    /// Last date to fetch, **inclusive** (e.g. `2024-01-31`).
-    to: NaiveDate,
-    /// Which historic data source to pull from.
-    source: BackfillSource,
-}
-
-/// Per-run summary returned by `POST /backfill`.
+/// Per-run summary returned by `GET /backfill`.
 #[derive(Debug, Object)]
 struct BackfillResult {
     /// Calendar dates that were fetched successfully (`YYYY-MM-DD`).
@@ -91,9 +81,17 @@ impl Endpoint {
     /// | `source`                | Description |
     /// |-------------------------|-------------|
     /// | `HyperliquidAssetCtxs`  | Daily asset-context snapshots from the Hyperliquid public S3 archive |
-    #[oai(path = "/backfill", method = "post")]
-    async fn backfill(&self, body: Json<BackfillRequest>) -> BackfillApiResponse {
-        let BackfillRequest { from, to, source } = body.0;
+    #[oai(path = "/backfill", method = "get")]
+    async fn backfill(
+        &self,
+        /// First date to fetch, **inclusive** (e.g. `2024-01-01`).
+        from: Query<NaiveDate>,
+        /// Last date to fetch, **inclusive** (e.g. `2024-01-31`).
+        to: Query<NaiveDate>,
+        /// Which historic data source to pull from.
+        source: Query<BackfillSource>,
+    ) -> BackfillApiResponse {
+        let (from, to, source) = (from.0, to.0, source.0);
 
         if from > to {
             return BackfillApiResponse::BadRequest(PlainText(
