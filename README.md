@@ -21,8 +21,48 @@ This project first focuses on
 | US treasury yields                | to gather yield curve data for macro market analysis    | scalar | [ustreasury](https://fiscaldata.treasury.gov/api-documentation/) | WIP     |
 | SEC filings                       | to index insider trading                                | scalar | [secapi](https://sec-api.io/docs/insider-ownership-trading-api/) | WIP     |
 
-## setup
-1. copy config_sample.toml as config.toml, add API keys into the config.toml
+## running with docker
+
+### build
+```sh
+docker build -t anysignal .
+```
+
+### run
+Copy `.env.example` to `.env`, fill in your values, then:
+```sh
+docker run --rm \
+  --env-file .env \
+  -p 3000:3000 \
+  anysignal
+```
+
+Or pass env vars inline:
+```sh
+docker run --rm \
+  -e QUESTDB_ADDR=host:9000 \
+  -e AWS_ACCESS_KEY_ID=... \
+  -e AWS_SECRET_ACCESS_KEY=... \
+  -e AWS_REGION=ap-northeast-1 \
+  -e HYPERLIQUID_S3_BUCKET=hyperliquid-archive \
+  -e RUNNERS=hyperliquid \
+  -p 3000:3000 \
+  anysignal
+```
+
+The REST API is available at `http://localhost:3000`.
+
+To connect to QuestDB running in another container, add both to the same network:
+```sh
+docker network create anysignal-net
+docker run --name signal-questdb --network anysignal-net -p 9000:9000 -d questdb/questdb
+docker run --rm --network anysignal-net --env-file .env -e QUESTDB_ADDR=signal-questdb:9000 -p 3000:3000 anysignal
+```
+
+---
+
+## setup (local dev)
+1. copy `.env.example` to `.env` and fill in your API keys
 2. set up `questdb` and `grafana` docker containers within same network
 ```
 // create a new network
