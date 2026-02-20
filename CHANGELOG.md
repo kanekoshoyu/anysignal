@@ -1,6 +1,18 @@
 # [signal](./README.md) changelog
 > [TODO](./src/README.md)
 
+## [0.3.2]
+### Added
+- Hyperliquid L2 orderbook backfill (`HyperliquidL2Orderbook` source on `GET /backfill`)
+  - `from`/`to` query params use `NaiveDateTime` (hour precision, e.g. `2024-01-01T06:00:00`)
+  - Iterates hour-by-hour over the datetime range; dedup check per (coin × hour)
+  - Fetches `s3://hyperliquid-archive/market_data/{YYYYMMDD}/{H}/l2Book/{coin}.lz4`
+  - Inserts into `l2_snapshot` table (ts, ticker, side, level, price, quantity)
+  - `coins` query param required (comma-separated, e.g. `BTC,ETH`)
+- `insert_l2_snapshots` DB writer with 64 MiB flush threshold
+- `l2_snapshot_coin_hour_exists` dedup check (per coin × hour)
+- Unit + integration tests verified against real S3 data (22 005 BTC snapshots)
+
 ## [0.3.1]
 ### Fixed
 - QuestDB buffer overflow on large ingestions: flush every 64 MiB mid-loop

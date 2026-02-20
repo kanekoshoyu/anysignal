@@ -4,6 +4,7 @@ pub mod response;
 pub mod table;
 
 use crate::adapter::hyperliquid_s3::asset_ctxs::AssetCtxRow;
+use crate::adapter::hyperliquid_s3::market_data::L2Snapshot;
 use crate::database::table::*;
 use crate::error::AnySignalResult;
 use crate::model::signal::{Signal, SignalData, SignalDataType, SignalInfo};
@@ -280,6 +281,103 @@ pub fn insert_asset_ctxs(sender: &mut Sender, rows: &[AssetCtxRow]) -> QuestResu
         sender.flush(&mut buffer)?;
     }
     Ok(())
+}
+
+
+// ---------------------------------------------------------------------------
+// Hyperliquid L2 orderbook — duplicate check
+// ---------------------------------------------------------------------------
+
+/// Returns `true` if `l2_snapshot` already has data for the given coin during
+/// the given hour (i.e. `ts >= hour_start AND ts < hour_start + 1 h`).
+///
+/// Returns `Ok(false)` on any QuestDB error so the caller proceeds with the
+/// fetch rather than silently skipping it.
+pub async fn l2_snapshot_coin_hour_exists(
+    config: &Config,
+    hour_start: chrono::NaiveDateTime,
+    coin: &str,
+) -> AnySignalResult<bool> {
+    let hour_end = hour_start + chrono::Duration::hours(1);
+    let query = format!(
+        "SELECT count() FROM l2_snapshot \
+         WHERE ticker = '{}' \
+         AND ts >= '{}Z' \
+         AND ts < '{}Z'",
+        coin,
+        hour_start.format("%Y-%m-%dT%H:%M:%S"),
+        hour_end.format("%Y-%m-%dT%H:%M:%S"),
+    );
+    let url = format!("http://{}/exec", config.questdb_addr);
+    let json: serde_json::Value = reqwest::Client::new()
+        .get(&url)
+        .query(&[("query", &query)])
+        .send()
+        .await?
+        .json()
+        .await?;
+
+    if json.get("error").and_then(|v| v.as_str()).is_some() {
+        return Ok(false);
+    }
+
+    let count = json["dataset"][0][0].as_i64().unwrap_or(0);
+    Ok(count > 0)
+}
+
+// ---------------------------------------------------------------------------
+// Hyperliquid L2 orderbook ingestion
+// ---------------------------------------------------------------------------
+
+/// Flush the L2 buffer when it exceeds 64 MiB — well below QuestDB's 100 MiB cap.
+const L2_BUFFER_FLUSH_THRESHOLD: usize = 64 * 1024 * 1024;
+
+/// Batch-insert L2 orderbook snapshots into the `l2_snapshot` table.
+///
+/// Each [`L2Snapshot`] expands to one row per price level per side:
+///   - `levels[0]` → side `"bid"`, level index 0, 1, 2, …
+///   - `levels[1]` → side `"ask"`, level index 0, 1, 2, …
+///
+/// The buffer is flushed automatically at [`L2_BUFFER_FLUSH_THRESHOLD`].
+/// Returns the total number of rows written.
+pub fn insert_l2_snapshots(
+    sender: &mut Sender,
+    snapshots: &[L2Snapshot],
+) -> QuestResult<usize> {
+    let mut buffer = Buffer::new();
+    let mut rows: usize = 0;
+
+    for snapshot in snapshots {
+        let ts_us = TimestampMicros::new(snapshot.time_ms() * 1_000); // ms → µs
+
+        for (side_idx, side_str) in [(0usize, "bid"), (1usize, "ask")] {
+            for (level_idx, level) in snapshot.levels()[side_idx].iter().enumerate() {
+                let price: f64 = level.px.parse().unwrap_or(0.0);
+                let quantity: f64 = level.sz.parse().unwrap_or(0.0);
+
+                buffer
+                    .table("l2_snapshot")?
+                    .symbol("ticker", snapshot.coin())?
+                    .symbol("side", side_str)?
+                    .column_i64("level", level_idx as i64)?
+                    .column_f64("price", price)?
+                    .column_f64("quantity", quantity)?
+                    .at(ts_us)?;
+
+                rows += 1;
+            }
+        }
+
+        if buffer.len() >= L2_BUFFER_FLUSH_THRESHOLD {
+            sender.flush(&mut buffer)?;
+        }
+    }
+
+    if !buffer.is_empty() {
+        sender.flush(&mut buffer)?;
+    }
+
+    Ok(rows)
 }
 
 #[cfg(test)]

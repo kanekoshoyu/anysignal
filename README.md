@@ -6,6 +6,25 @@ This project first focuses on
 - setting up framework for gathering signals, data visualization and backtesting via QuestDB
 - study even driven market patterns based on correlation between market scenario, events and prices 
 
+## backfill endpoint
+`POST /backfill` — fetch historic data from S3 into QuestDB for a date range.
+
+| `source` | Description | Extra fields |
+|---|---|---|
+| `HyperliquidAssetCtxs` | Daily asset-context snapshots (`market_data` table) | — |
+| `HyperliquidL2Orderbook` | Hourly L2 orderbook snapshots (`l2_snapshot` table) | `coins` (required), `hours` (0–23, default all) |
+
+```json
+// Example — backfill BTC & ETH orderbook for one week, peak hours only
+{
+  "from": "2024-01-01",
+  "to": "2024-01-07",
+  "source": "HyperliquidL2Orderbook",
+  "coins": ["BTC", "ETH"],
+  "hours": [0, 6, 12, 18]
+}
+```
+
 ## signals available
 | signal                            | purpose                                                 | type   | source                                                           | status  |
 | --------------------------------- | ------------------------------------------------------- | ------ | ---------------------------------------------------------------- | ------- |

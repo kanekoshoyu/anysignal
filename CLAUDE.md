@@ -1,34 +1,61 @@
 # AnySignal — Claude Code Notes
 
-## Hyperliquid S3 Archive
+## Project overview
+Rust async service that backfills and streams trading signals/market data into **QuestDB** (timeseries DB). Deployed via Docker on Coolify; all config is env-var only via `Config::from_env()`.
 
-- **Bucket**: `hyperliquid-archive` in `us-east-1`
-- **Requester-pays**: all requests must include `.request_payer(RequestPayer::Requester)`
-- **Date format in keys**: `YYYYMMDD` (no dashes), e.g. `asset_ctxs/20250101.csv.lz4`
-- **Compression**: LZ4 **frame** format — use `lz4::Decoder` (not `lz4::block::decompress`)
-- **CSV schema** (snake_case headers, not camelCase):
-  ```
-  time,coin,funding,open_interest,prev_day_px,day_ntl_vlm,premium,oracle_px,mark_px,mid_px,impact_bid_px,impact_ask_px
-  ```
-- **`time` column**: ISO 8601 string (`2025-01-01T00:00:00Z`) — deserialise as `chrono::DateTime<chrono::Utc>`
-- **Optional fields**: `premium`, `mid_px`, `impact_bid_px`, `impact_ask_px` — may be empty string or `"null"`; use `de_opt_f64`
-- **Illiquid coins**: optional price fields may be `Some(0.0)` (zero open interest / volume is valid)
-- **Credentials**: personal IAM credentials from `.env` — `dotenvy::dotenv().ok()` must be called before `Config::from_env()` in ignored tests
+## Key architecture
+- **`src/main.rs`** — spawns tokio tasks for each enabled runner (`RUNNERS=api,coinmarketcap,…`)
+- **`src/config.rs`** — `Config` struct (`questdb_addr`, `s3_bucket`, `aws_region`, etc.); passed by reference everywhere — never read env vars directly in business logic
+- **`src/adapter/`** — one sub-module per data source; implement `DataSource` / `HistoricDataSource` traits
+- **`src/database/mod.rs`** — QuestDB ILP writers (batch via `Buffer`, flush via `Sender`)
+- **`src/api/rest/endpoint.rs`** — Poem/OpenAPI REST; `GET /backfill` is the main entry point
 
-## Testing
+## Adding a new backfill source — checklist
+1. Create `src/adapter/hyperliquid_s3/<name>.rs`; `new(config: &Config)` pattern (see `asset_ctxs.rs` / `market_data.rs`)
+2. Add dedup-check to `database/mod.rs`: `<name>_exists(config, …) -> AnySignalResult<bool>`
+3. Add writer to `database/mod.rs`: `insert_<name>(sender, rows) -> QuestResult<usize>` with 64 MiB flush threshold
+4. Add `BackfillSource` variant + match arm in `endpoint.rs` (datetime-based iteration, dedup + `force` flag)
+5. Unit tests (no network) + `#[ignore]` integration test
 
-- Unit tests: `cargo test`
-- Integration tests (requires `.env` with real AWS credentials): `cargo test -- --ignored`
-- Ignored tests use `dotenvy::dotenv().ok()` to load `.env` before `Config::from_env()`
+## Hyperliquid S3 — critical details
+| Dataset | Key pattern | LZ4 format | Date fmt | Hour fmt |
+|---|---|---|---|---|
+| asset_ctxs | `asset_ctxs/{YYYYMMDD}.csv.lz4` | **frame** (`lz4::Decoder`) | `YYYYMMDD` | — |
+| L2 orderbook | `market_data/{YYYYMMDD}/{H}/l2Book/{coin}.lz4` | **frame** (`lz4::Decoder`) | `YYYYMMDD` | unpadded `0`–`23` |
 
-## Development workflow
+- Bucket: **`hyperliquid-archive`**, region: **`us-east-1`**
+- Bucket is **requester-pays** — always pass `.request_payer(RequestPayer::Requester)`
+- L2 wire format (NDJSON per line): `{"time":"…","ver_num":1,"raw":{"channel":"l2Book","data":{"coin":"…","time":<ms>,"levels":[[bids…],[asks…]]}}}`
+- `asset_ctxs` CSV: snake_case headers; `time` is `chrono::DateTime<Utc>` (ISO 8601)
 
-- **Push format/encoding decisions into the function, not the caller.** If a function accepts a `&str` date, every caller must know the right format — and they will drift. Accept a typed value (`NaiveDate`, `DateTime`, etc.) and format internally. One place to change, compiler enforces all callers.
-  - Example: `fetch_and_decompress` originally took `&str` — tests passed `"20250101"` correctly but `endpoint.rs` passed `"2025-01-01"` (wrong). Changing the signature to `NaiveDate` made the format a single `format!` inside the function and removed the class of bug entirely.
-- **When changing a data format or key name, grep for all call sites** — passing tests do not guarantee the production path is fixed if callers format independently. After any format/schema fix run: `grep -rn "old_format_string" src/`.
+## Backfill API design
+- `GET /backfill?from=2024-01-01T00:00:00&to=2024-01-07T23:00:00&source=…&force=false`
+- `from`/`to` are **`NaiveDateTime`** (hour precision)
+- `HyperliquidAssetCtxs` — steps **day-by-day** using only the date part of `from`/`to`
+- `HyperliquidL2Orderbook` — steps **hour-by-hour**; requires `coins=BTC,ETH` query param
+- Both sources check QuestDB before fetching (dedup); `force=true` bypasses the check
 
-## AWS SDK patterns
+## QuestDB patterns
+- Timestamps in **microseconds** (`ms * 1_000`, `chrono::DateTime::timestamp_micros()`)
+- `SYMBOL` → `.symbol()`, `DOUBLE` → `.column_f64()`, `LONG` → `.column_i64()`
+- Flush buffer every **64 MiB** (`BUFFER_FLUSH_THRESHOLD`) — daily data can exceed QuestDB's 100 MiB cap
 
-- Build S3 client via `aws_config::defaults(BehaviorVersion::latest()).region(region).load().await`
-- The `AWS_REGION` env var is loaded from `.env`; default falls back to `us-east-1`
-- Cross-account S3 access is denied even for IAM users unless the bucket policy allows it — requester-pays was the issue here, not cross-account restrictions
+## l2_snapshot table schema
+```sql
+CREATE TABLE l2_snapshot (
+    ts       TIMESTAMP,
+    ticker   SYMBOL,   -- coin ticker
+    side     SYMBOL,   -- 'bid' or 'ask'
+    level    INT,      -- 0-based price level index
+    price    DOUBLE,
+    quantity DOUBLE
+) timestamp(ts) PARTITION BY DAY;
+```
+
+## Clippy lints
+`unwrap_used`, `expect_used`, `panic` are **deny** — use `?` in production; `unwrap()` only inside `#[cfg(test)]`.
+
+## Running integration tests
+```bash
+cargo test -- --ignored --nocapture   # requires .env with real AWS creds
+```
