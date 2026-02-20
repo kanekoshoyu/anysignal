@@ -164,6 +164,47 @@ pub fn questdb_sender(config: &Config) -> QuestResult<Sender> {
 }
 
 // ---------------------------------------------------------------------------
+// Hyperliquid asset_ctxs — duplicate check
+// ---------------------------------------------------------------------------
+
+/// Returns `true` if the `market_data` table already contains at least one row
+/// for `source = 'HYPERLIQUID_S3'` on the given calendar day.
+///
+/// If the table does not yet exist or QuestDB returns any error, `Ok(false)` is
+/// returned so that the caller proceeds with the fetch rather than skipping it.
+pub async fn asset_ctxs_date_exists(
+    config: &Config,
+    date: chrono::NaiveDate,
+) -> AnySignalResult<bool> {
+    let next_day = date.succ_opt().unwrap_or(date);
+    let query = format!(
+        "SELECT count() FROM market_data \
+         WHERE source = 'HYPERLIQUID_S3' \
+         AND timestamp >= '{}T00:00:00Z' \
+         AND timestamp < '{}T00:00:00Z'",
+        date.format("%Y-%m-%d"),
+        next_day.format("%Y-%m-%d"),
+    );
+    let url = format!("http://{}/exec", config.questdb_addr);
+    let json: serde_json::Value = reqwest::Client::new()
+        .get(&url)
+        .query(&[("query", &query)])
+        .send()
+        .await?
+        .json()
+        .await?;
+
+    // If QuestDB returns an error field (e.g. table doesn't exist yet), treat as
+    // no data so the backfill proceeds normally.
+    if json.get("error").and_then(|v| v.as_str()).is_some() {
+        return Ok(false);
+    }
+
+    let count = json["dataset"][0][0].as_i64().unwrap_or(0);
+    Ok(count > 0)
+}
+
+// ---------------------------------------------------------------------------
 // Hyperliquid asset_ctxs ingestion
 // ---------------------------------------------------------------------------
 

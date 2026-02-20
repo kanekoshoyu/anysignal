@@ -1,6 +1,6 @@
 use crate::adapter::hyperliquid_s3::asset_ctxs::AssetCtxs;
 use crate::config::Config;
-use crate::database::{insert_asset_ctxs, questdb_sender};
+use crate::database::{asset_ctxs_date_exists, insert_asset_ctxs, questdb_sender};
 use crate::metadata::cargo_package_version;
 use chrono::NaiveDate;
 use poem_openapi::{
@@ -34,10 +34,14 @@ struct BackfillResult {
     dates_ok: Vec<String>,
     /// Calendar dates that failed, formatted as `"YYYY-MM-DD: <error>"`.
     dates_err: Vec<String>,
+    /// Calendar dates skipped because data was already present in QuestDB.
+    dates_skipped: Vec<String>,
     /// Number of dates fetched successfully.
     total_ok: u64,
     /// Number of dates that produced an error.
     total_err: u64,
+    /// Number of dates skipped due to existing data.
+    total_skipped: u64,
     /// Total rows inserted into QuestDB across all successful dates.
     rows_inserted: u64,
 }
@@ -79,6 +83,10 @@ impl Endpoint {
     /// and select a data source.  The server fetches one file per calendar day
     /// and returns a per-date success / failure summary.
     ///
+    /// By default the server checks QuestDB before each fetch and skips any
+    /// date that already has data (`dates_skipped`).  Set `force=true` to
+    /// bypass that check and always fetch and insert.
+    ///
     /// Supported sources
     /// -----------------
     /// | `source`                | Description |
@@ -93,8 +101,10 @@ impl Endpoint {
         to: Query<NaiveDate>,
         /// Which historic data source to pull from.
         source: Query<BackfillSource>,
+        /// Skip the duplicate check and always fetch+insert.  Defaults to `false`.
+        force: Query<Option<bool>>,
     ) -> BackfillApiResponse {
-        let (from, to, source) = (from.0, to.0, source.0);
+        let (from, to, source, force) = (from.0, to.0, source.0, force.0.unwrap_or(false));
 
         if from > to {
             return BackfillApiResponse::BadRequest(PlainText(
@@ -126,11 +136,35 @@ impl Endpoint {
 
                 let mut dates_ok: Vec<String> = Vec::new();
                 let mut dates_err: Vec<String> = Vec::new();
+                let mut dates_skipped: Vec<String> = Vec::new();
                 let mut rows_inserted: u64 = 0;
                 let mut current = from;
 
                 while current <= to {
                     let date_str = current.format("%Y-%m-%d").to_string();
+
+                    // Unless force=true, skip dates already present in QuestDB.
+                    if !force {
+                        match asset_ctxs_date_exists(&self.config, current).await {
+                            Ok(true) => {
+                                dates_skipped.push(date_str);
+                                match current.succ_opt() {
+                                    Some(next) => { current = next; }
+                                    None => break,
+                                }
+                                continue;
+                            }
+                            Ok(false) => {}
+                            Err(e) => {
+                                dates_err.push(format!("{}: existence check failed: {}", date_str, e));
+                                match current.succ_opt() {
+                                    Some(next) => { current = next; }
+                                    None => break,
+                                }
+                                continue;
+                            }
+                        }
+                    }
 
                     let result = async {
                         let csv_text = fetcher.fetch_and_decompress(current).await?;
@@ -157,11 +191,14 @@ impl Endpoint {
 
                 let total_ok = dates_ok.len() as u64;
                 let total_err = dates_err.len() as u64;
+                let total_skipped = dates_skipped.len() as u64;
                 BackfillApiResponse::Ok(Json(BackfillResult {
                     dates_ok,
                     dates_err,
+                    dates_skipped,
                     total_ok,
                     total_err,
+                    total_skipped,
                     rows_inserted,
                 }))
             }
