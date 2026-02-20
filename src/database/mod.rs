@@ -9,10 +9,10 @@ use crate::error::AnySignalResult;
 use crate::model::signal::{Signal, SignalData, SignalDataType, SignalInfo};
 use questdb::ingress::{Buffer, Sender, TimestampMicros};
 use questdb::Result as QuestResult;
+use crate::config::Config;
 use response::QuestDbResponse;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
-use std::env;
 
 // batch insert using questdb ingress
 pub fn insert_signal_db(
@@ -151,16 +151,13 @@ pub async fn insert_unique_signal_db(
 /// Optional env (leave unset when auth is disabled):
 /// - `QUESTDB_USER`
 /// - `QUESTDB_PASSWORD`
-pub fn questdb_sender() -> QuestResult<Sender> {
-    dotenvy::dotenv().ok();
-    let addr =
-        env::var("QUESTDB_ADDR").unwrap_or_else(|_| "questdb.bounteer.com:9000".to_string());
-
-    let conf = match (env::var("QUESTDB_USER"), env::var("QUESTDB_PASSWORD")) {
-        (Ok(user), Ok(pass)) => {
-            format!("http::addr={};username={};password={};", addr, user, pass)
-        }
-        _ => format!("http::addr={};", addr),
+pub fn questdb_sender(config: &Config) -> QuestResult<Sender> {
+    let conf = match (&config.questdb_user, &config.questdb_password) {
+        (Some(user), Some(pass)) => format!(
+            "http::addr={};username={};password={};",
+            config.questdb_addr, user, pass
+        ),
+        _ => format!("http::addr={};", config.questdb_addr),
     };
 
     Sender::from_conf(conf)
@@ -170,6 +167,11 @@ pub fn questdb_sender() -> QuestResult<Sender> {
 // Hyperliquid asset_ctxs ingestion
 // ---------------------------------------------------------------------------
 
+/// Flush the buffer when it exceeds this size (64 MiB), well below QuestDB's
+/// default 100 MiB cap.  A single day of asset_ctxs data is ~192 MiB
+/// uncompressed, so without chunking the flush always fails.
+const BUFFER_FLUSH_THRESHOLD: usize = 64 * 1024 * 1024;
+
 /// Batch-insert a slice of [`AssetCtxRow`]s into the `market_data` table.
 ///
 /// Each source row is fanned out into one `market_data` row per metric so the
@@ -178,11 +180,15 @@ pub fn questdb_sender() -> QuestResult<Sender> {
 /// Metrics written per row:
 ///   open_interest, funding, mark_px, oracle_px, prev_day_px, day_ntl_vlm,
 ///   mid_px (skipped when None), premium (skipped when None).
+///
+/// The buffer is flushed automatically whenever it reaches
+/// [`BUFFER_FLUSH_THRESHOLD`], so callers never need to worry about the
+/// QuestDB maximum-buffer-size limit regardless of input size.
 pub fn insert_asset_ctxs(sender: &mut Sender, rows: &[AssetCtxRow]) -> QuestResult<()> {
     let mut buffer = Buffer::new();
 
     for row in rows {
-        let ts_us = TimestampMicros::new(row.time * 1_000); // ms → µs
+        let ts_us = TimestampMicros::new(row.time.timestamp_micros());
 
         let metrics: &[(&str, f64)] = &[
             ("open_interest", row.open_interest),
@@ -222,9 +228,16 @@ pub fn insert_asset_ctxs(sender: &mut Sender, rows: &[AssetCtxRow]) -> QuestResu
                 .column_f64("value", v)?
                 .at(ts_us)?;
         }
+
+        if buffer.len() >= BUFFER_FLUSH_THRESHOLD {
+            sender.flush(&mut buffer)?;
+        }
     }
 
-    sender.flush(&mut buffer)?;
+    // Flush any rows that didn't fill a full chunk.
+    if !buffer.is_empty() {
+        sender.flush(&mut buffer)?;
+    }
     Ok(())
 }
 

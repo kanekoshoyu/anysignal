@@ -1,6 +1,11 @@
 # [signal](./README.md) changelog
 > [TODO](./src/README.md)
 
+## [0.3.1]
+### Fixed
+- QuestDB buffer overflow on large ingestions: flush every 64 MiB mid-loop
+  so a full day of asset_ctxs (~192 MiB) no longer exceeds the 100 MiB cap
+
 ## [0.2.1]
 ### Added
 - (WIP) polygon stock price indexer
