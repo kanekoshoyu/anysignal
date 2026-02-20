@@ -192,25 +192,3 @@ fn extract_video_id(url: &str) -> Option<&str> {
 }
 
 
-mod tests {
-    #[tokio::test]
-    async fn test_live_closed_caption_fetcher() {
-        use form4::*;
-        let config: Config = Config::from_env();
-        let api_key = config.get_api_key("youtube_data_v3").unwrap();
-        dbg!(&api_key);
-
-        // Example usage
-        let requirement = YouTubeClosedCaptionRequirement {
-            url: "https://www.youtube.com/watch?v=UgPp6oTocAc".into(),
-            // Fetch captions in English
-            language: Some("en".to_string()),
-            polling_period: std::time::Duration::from_secs(10),
-        };
-
-        match fetch(&api_key, &requirement).await {
-            Ok(captions) => println!("Captions: {}", captions),
-            Err(e) => eprintln!("Error fetching captions: {}", e),
-        }
-    }
-}

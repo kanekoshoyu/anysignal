@@ -12,6 +12,8 @@ use tokio::task::JoinHandle;
 /// load environment and manages runner at this level
 #[tokio::main]
 async fn main() -> AnySignalResult<()> {
+    dotenvy::dotenv().ok();
+
     // set up config to load API tokens
     let config: Config = Config::from_env();
     println!("Config: {:#?}", config);
@@ -21,8 +23,10 @@ async fn main() -> AnySignalResult<()> {
 
     if config.has_runner("api") {
         println!("Starting API server");
-        let handle =
-            tokio::spawn(async move { host_rest_api_server().await }.map_err(AnySignalError::from));
+        let api_config = config.clone();
+        let handle = tokio::spawn(
+            async move { host_rest_api_server(api_config).await }.map_err(AnySignalError::from),
+        );
         runners.push(handle);
     }
 

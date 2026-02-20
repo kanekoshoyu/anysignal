@@ -1,4 +1,5 @@
 mod endpoint;
+use crate::config::Config;
 use crate::metadata::cargo_package_version;
 use endpoint::Endpoint;
 use poem::{listener::TcpListener, Route, Server};
@@ -17,7 +18,7 @@ pub enum ApiError {
 }
 
 // host a rest api server
-pub async fn host_rest_api_server() -> Result<(), ApiError> {
+pub async fn host_rest_api_server(config: Config) -> Result<(), ApiError> {
     let url = "http://localhost:3000";
 
     let desciption = "signal indexer";
@@ -26,11 +27,10 @@ pub async fn host_rest_api_server() -> Result<(), ApiError> {
 
     // stable
     let service_api_root = {
-        let all_ep = Endpoint;
+        let all_ep = Endpoint { config };
         OpenApiService::new(all_ep, title, cargo_package_version())
             .server(ServerObject::new(url))
             .description(desciption)
-            .external_document("https://repoch-trading.com/yaml")
     };
 
     // openapi documentation endpoints
@@ -55,6 +55,6 @@ pub async fn host_rest_api_server() -> Result<(), ApiError> {
         .map_err(|i| i.into())
 }
 
-pub async fn run_web() -> JoinHandle<Result<(), ApiError>> {
-    tokio::spawn(async move { host_rest_api_server().await })
+pub async fn run_web(config: Config) -> JoinHandle<Result<(), ApiError>> {
+    tokio::spawn(async move { host_rest_api_server(config).await })
 }

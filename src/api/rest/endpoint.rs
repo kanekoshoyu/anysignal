@@ -1,4 +1,5 @@
 use crate::adapter::hyperliquid_s3::asset_ctxs::AssetCtxs;
+use crate::config::Config;
 use crate::database::{insert_asset_ctxs, questdb_sender};
 use crate::metadata::cargo_package_version;
 use chrono::NaiveDate;
@@ -8,7 +9,9 @@ use poem_openapi::{
     ApiResponse, Enum, Object, OpenApi,
 };
 
-pub struct Endpoint;
+pub struct Endpoint {
+    pub config: Config,
+}
 
 // ---------------------------------------------------------------------------
 // Backfill types
@@ -19,7 +22,7 @@ pub struct Endpoint;
 enum BackfillSource {
     /// Hyperliquid daily asset-context snapshots from the public S3 archive.
     ///
-    /// Fetches `s3://hyperliquid-archive/asset_ctxs/YYYY-MM-DD.csv.lz4` for
+    /// Fetches `s3://hyperliquid-archive/asset_ctxs/YYYYMMDD.csv.lz4` for
     /// every calendar day in the requested range.
     HyperliquidAssetCtxs,
 }
@@ -101,7 +104,7 @@ impl Endpoint {
 
         match source {
             BackfillSource::HyperliquidAssetCtxs => {
-                let fetcher = match AssetCtxs::new().await {
+                let fetcher = match AssetCtxs::new(&self.config).await {
                     Ok(f) => f,
                     Err(e) => {
                         return BackfillApiResponse::InternalError(PlainText(format!(
@@ -111,7 +114,7 @@ impl Endpoint {
                     }
                 };
 
-                let mut sender = match questdb_sender() {
+                let mut sender = match questdb_sender(&self.config) {
                     Ok(s) => s,
                     Err(e) => {
                         return BackfillApiResponse::InternalError(PlainText(format!(
@@ -130,7 +133,7 @@ impl Endpoint {
                     let date_str = current.format("%Y-%m-%d").to_string();
 
                     let result = async {
-                        let csv_text = fetcher.fetch_and_decompress(&date_str).await?;
+                        let csv_text = fetcher.fetch_and_decompress(current).await?;
                         let rows = AssetCtxs::parse_csv(&csv_text)?;
                         let n = rows.len() as u64;
                         insert_asset_ctxs(&mut sender, &rows)?;

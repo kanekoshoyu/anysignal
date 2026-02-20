@@ -43,7 +43,7 @@ docker run --rm \
   -e QUESTDB_ADDR=host:9000 \
   -e AWS_ACCESS_KEY_ID=... \
   -e AWS_SECRET_ACCESS_KEY=... \
-  -e AWS_REGION=ap-northeast-1 \
+  -e AWS_REGION=us-east-1 \
   -e HYPERLIQUID_S3_BUCKET=hyperliquid-archive \
   -e RUNNERS=hyperliquid \
   -p 3000:3000 \
@@ -85,6 +85,18 @@ add questdb plugin, add datasource, configure as below
 - host: `signal-questdb:8812` // hostname is container name in same network
 - username: `admin`
 - password: `quest`
+
+## testing
+
+Unit tests (no credentials required):
+```sh
+cargo test
+```
+
+Integration / screening tests (require `.env` with real AWS credentials and outbound network access):
+```sh
+cargo test -- --ignored
+```
 
 ## see also
 - [code structure and todo](./src/README.md)
