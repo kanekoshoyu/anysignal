@@ -1,6 +1,16 @@
 # [signal](./README.md) changelog
 > [TODO](./src/README.md)
 
+## [0.4.0]
+### Changed
+- Introduced `src/backfill/` module with `PartitionedSource` trait and generic `run_backfill` loop
+  - Backfill logic extracted from `endpoint.rs` into `backfill/asset_ctxs.rs` and `backfill/l2_snapshot.rs`
+  - `run_backfill` handles dedup, force-flag, per-key error accumulation, and fatal credential short-circuit
+- Typed S3 error classification in `adapter/hyperliquid_s3/mod.rs`
+  - `classify_s3_error` maps 401/403 → `AdapterError::Unauthorized`, `NoSuchKey` → `AdapterError::NotFound`, other → `AdapterError::FetchError`
+  - `fmt_err_chain` walks the full error source chain for useful AWS SDK messages
+- `endpoint.rs` and `database/mod.rs` refactored to use the new backfill abstractions
+
 ## [0.3.2]
 ### Added
 - Hyperliquid L2 orderbook backfill (`HyperliquidL2Orderbook` source on `GET /backfill`)
