@@ -33,7 +33,7 @@ impl Config {
         let s3_bucket = env::var("HYPERLIQUID_S3_BUCKET")
             .unwrap_or_else(|_| "hyperliquid-archive".to_string());
         let aws_region =
-            env::var("AWS_REGION").unwrap_or_else(|_| "ap-northeast-1".to_string());
+            env::var("AWS_REGION").unwrap_or_else(|_| "us-east-1".to_string());
 
         Self {
             runners,

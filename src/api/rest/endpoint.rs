@@ -1,8 +1,10 @@
+use crate::adapter::error::AdapterError;
 use crate::adapter::hyperliquid_s3::asset_ctxs::AssetCtxs;
 use crate::adapter::hyperliquid_s3::market_data::MarketData;
 use crate::config::Config;
 use crate::database::{asset_ctxs_date_exists, insert_asset_ctxs, insert_l2_snapshots,
                        l2_snapshot_coin_hour_exists, questdb_sender};
+use crate::error::AnySignalError;
 use crate::metadata::cargo_package_version;
 use chrono::{NaiveDate, NaiveDateTime, Timelike};
 use poem_openapi::{
@@ -10,6 +12,20 @@ use poem_openapi::{
     payload::{Json, PlainText},
     ApiResponse, Enum, Object, OpenApi,
 };
+
+/// Parse a datetime string in either `YYYY-MM-DDTHH:MM:SS` or `YYYY-MM-DD` format.
+/// Date-only strings are treated as midnight (`T00:00:00`).
+fn parse_flexible_datetime(s: &str) -> Result<NaiveDateTime, String> {
+    if let Ok(dt) = NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S") {
+        return Ok(dt);
+    }
+    if let Ok(d) = NaiveDate::parse_from_str(s, "%Y-%m-%d") {
+        return Ok(d.and_hms_opt(0, 0, 0).unwrap_or_default());
+    }
+    Err(format!(
+        "Invalid datetime '{s}': expected 'YYYY-MM-DDTHH:MM:SS' or 'YYYY-MM-DD'"
+    ))
+}
 
 pub struct Endpoint {
     pub config: Config,
@@ -88,8 +104,8 @@ impl Endpoint {
 
     /// Backfill historic data for a datetime range.
     ///
-    /// `from` and `to` are **datetime** values at **hour precision**,
-    /// e.g. `2024-01-01T00:00:00`.
+    /// `from` and `to` accept either a full datetime (`2024-01-01T00:00:00`) or a
+    /// date-only value (`2024-01-01`), which is treated as midnight (`T00:00:00`).
     ///
     /// - `HyperliquidAssetCtxs` — steps day-by-day using only the date part.
     /// - `HyperliquidL2Orderbook` — steps **hour-by-hour** from `from` to `to`;
@@ -105,10 +121,10 @@ impl Endpoint {
     #[oai(path = "/backfill", method = "get")]
     async fn backfill(
         &self,
-        /// Start of the range, **inclusive** (e.g. `2024-01-01T00:00:00`).
-        from: Query<NaiveDateTime>,
-        /// End of the range, **inclusive** (e.g. `2024-01-07T23:00:00`).
-        to: Query<NaiveDateTime>,
+        /// Start of the range, **inclusive** (`2024-01-01T00:00:00` or `2024-01-01`).
+        from: Query<String>,
+        /// End of the range, **inclusive** (`2024-01-07T23:00:00` or `2024-01-07`).
+        to: Query<String>,
         /// Which historic data source to pull from.
         source: Query<BackfillSource>,
         /// Skip the duplicate check and always fetch+insert.  Defaults to `false`.
@@ -117,7 +133,15 @@ impl Endpoint {
         /// e.g. `BTC,ETH`).
         coins: Query<Option<String>>,
     ) -> BackfillApiResponse {
-        let (from, to, source, force) = (from.0, to.0, source.0, force.0.unwrap_or(false));
+        let from = match parse_flexible_datetime(&from.0) {
+            Ok(dt) => dt,
+            Err(e) => return BackfillApiResponse::BadRequest(PlainText(e)),
+        };
+        let to = match parse_flexible_datetime(&to.0) {
+            Ok(dt) => dt,
+            Err(e) => return BackfillApiResponse::BadRequest(PlainText(e)),
+        };
+        let (source, force) = (source.0, force.0.unwrap_or(false));
 
         if from > to {
             return BackfillApiResponse::BadRequest(PlainText(
@@ -185,6 +209,14 @@ impl Endpoint {
 
                     match result {
                         Ok(n) => { rows_inserted += n; dates_ok.push(date_str); }
+                        Err(AnySignalError::Adapter(AdapterError::Unauthorized(msg))) => {
+                            return BackfillApiResponse::InternalError(PlainText(
+                                format!("AWS credential error — all further periods would fail: {msg}")
+                            ));
+                        }
+                        Err(AnySignalError::Adapter(AdapterError::NotFound(msg))) => {
+                            dates_skipped.push(format!("{date_str}: {msg}"));
+                        }
                         Err(e) => dates_err.push(format!("{date_str}: {e}")),
                     }
 
@@ -270,6 +302,15 @@ impl Endpoint {
 
                         match result {
                             Ok(n) => hour_rows += n,
+                            Err(AnySignalError::Adapter(AdapterError::Unauthorized(msg))) => {
+                                return BackfillApiResponse::InternalError(PlainText(
+                                    format!("AWS credential error — all further periods would fail: {msg}")
+                                ));
+                            }
+                            Err(AnySignalError::Adapter(AdapterError::NotFound(msg))) => {
+                                // treat missing archive slice as skipped for this coin
+                                hour_errors.push(format!("coin={coin}: not in archive ({msg})"));
+                            }
                             Err(e) => hour_errors.push(format!("coin={coin}: {e}")),
                         }
                     }

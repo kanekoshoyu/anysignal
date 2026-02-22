@@ -112,9 +112,7 @@ impl MarketData {
             .request_payer(RequestPayer::Requester)
             .send()
             .await
-            .map_err(|e| {
-                AnySignalError::Adapter(AdapterError::FetchError(format!("S3 error: {e}")))
-            })?;
+            .map_err(|e| classify_s3_error(&e, &key))?;
 
         let data: AggregatedBytes = resp
             .body

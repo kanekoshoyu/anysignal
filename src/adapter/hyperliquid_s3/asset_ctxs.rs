@@ -3,6 +3,7 @@ use crate::adapter::{AdapterError, AdapterResult, DataSource, DataSourceType, Hi
 use crate::config::Config;
 use serde::Deserialize;
 use aws_sdk_s3::config::Region;
+use aws_sdk_s3::operation::get_object::GetObjectError;
 use aws_sdk_s3::Client;
 use aws_smithy_types::byte_stream::AggregatedBytes;
 
@@ -73,7 +74,7 @@ impl AssetCtxs {
             .request_payer(aws_sdk_s3::types::RequestPayer::Requester)
             .send()
             .await
-            .map_err(|e| AnySignalError::Adapter(AdapterError::FetchError(format!("Failed to fetch from S3: {e}"))))?;
+            .map_err(|e| classify_s3_error(&e, &key))?;
 
         let data: AggregatedBytes = resp.body.collect().await
             .map_err(|e| AnySignalError::Adapter(AdapterError::FetchError(format!("Failed to collect response body: {}", e))))?;

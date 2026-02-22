@@ -12,6 +12,12 @@ pub enum AdapterError {
     ConfigurationError(String),
     #[error("Fetch: {0}")]
     FetchError(String),
+    /// The requested S3 object does not exist (HTTP 404 / NoSuchKey).
+    #[error("NotFound: {0}")]
+    NotFound(String),
+    /// AWS credential or permission error (HTTP 401/403).
+    #[error("Unauthorized: {0}")]
+    Unauthorized(String),
 }
 
 pub type AdapterResult<T> = Result<T, AdapterError>;
