@@ -165,45 +165,57 @@ pub fn questdb_sender(config: &Config) -> QuestResult<Sender> {
 }
 
 // ---------------------------------------------------------------------------
-// Hyperliquid asset_ctxs — duplicate check
+// QuestDbClient — combined HTTP query + ILP sender handle
 // ---------------------------------------------------------------------------
 
-/// Returns `true` if the `market_data` table already contains at least one row
-/// for `source = 'HYPERLIQUID_S3'` on the given calendar day.
-///
-/// If the table does not yet exist or QuestDB returns any error, `Ok(false)` is
-/// returned so that the caller proceeds with the fetch rather than skipping it.
-pub async fn asset_ctxs_date_exists(
-    config: &Config,
-    date: chrono::NaiveDate,
-) -> AnySignalResult<bool> {
-    let next_day = date.succ_opt().unwrap_or(date);
-    let query = format!(
-        "SELECT count() FROM market_data \
-         WHERE source = 'HYPERLIQUID_S3' \
-         AND timestamp >= '{}T00:00:00Z' \
-         AND timestamp < '{}T00:00:00Z'",
-        date.format("%Y-%m-%d"),
-        next_day.format("%Y-%m-%d"),
-    );
-    let url = format!("http://{}/exec", config.questdb_addr);
-    let json: serde_json::Value = reqwest::Client::new()
-        .get(&url)
-        .query(&[("query", &query)])
-        .send()
-        .await?
-        .json()
-        .await?;
+/// Bundles the QuestDB HTTP query address and an ILP [`Sender`] into a single
+/// handle that can be passed to [`PartitionedSource`] implementations.
+pub struct QuestDbClient {
+    pub addr: String,
+    sender: std::sync::Mutex<Sender>,
+}
 
-    // If QuestDB returns an error field (e.g. table doesn't exist yet), treat as
-    // no data so the backfill proceeds normally.
-    if json.get("error").and_then(|v| v.as_str()).is_some() {
-        return Ok(false);
+impl QuestDbClient {
+    /// Build a client from the application [`Config`].
+    pub fn new(config: &Config) -> QuestResult<Self> {
+        let sender = questdb_sender(config)?;
+        Ok(Self {
+            addr: config.questdb_addr.clone(),
+            sender: std::sync::Mutex::new(sender),
+        })
     }
 
-    let count = json["dataset"][0][0].as_i64().unwrap_or(0);
-    Ok(count > 0)
+    /// Execute a closure with exclusive access to the ILP [`Sender`].
+    /// The closure must be synchronous — do not await inside it.
+    pub fn with_sender<F, T>(&self, f: F) -> QuestResult<T>
+    where
+        F: FnOnce(&mut Sender) -> QuestResult<T>,
+    {
+        let mut guard = self.sender.lock().unwrap_or_else(|p| p.into_inner());
+        f(&mut guard)
+    }
+
+    /// Run a `SELECT count()` SQL query via the QuestDB HTTP `/exec` endpoint
+    /// and return the first cell as an `i64`.
+    ///
+    /// Returns `Ok(0)` on any QuestDB-level error (e.g. table not yet created)
+    /// so callers can treat a missing table as "no data present".
+    pub async fn count(&self, sql: &str) -> AnySignalResult<i64> {
+        let url = format!("http://{}/exec", self.addr);
+        let json: serde_json::Value = reqwest::Client::new()
+            .get(&url)
+            .query(&[("query", sql)])
+            .send()
+            .await?
+            .json()
+            .await?;
+        if json.get("error").and_then(|v| v.as_str()).is_some() {
+            return Ok(0);
+        }
+        Ok(json["dataset"][0][0].as_i64().unwrap_or(0))
+    }
 }
+
 
 // ---------------------------------------------------------------------------
 // Hyperliquid asset_ctxs ingestion
@@ -284,46 +296,6 @@ pub fn insert_asset_ctxs(sender: &mut Sender, rows: &[AssetCtxRow]) -> QuestResu
 }
 
 
-// ---------------------------------------------------------------------------
-// Hyperliquid L2 orderbook — duplicate check
-// ---------------------------------------------------------------------------
-
-/// Returns `true` if `l2_snapshot` already has data for the given coin during
-/// the given hour (i.e. `ts >= hour_start AND ts < hour_start + 1 h`).
-///
-/// Returns `Ok(false)` on any QuestDB error so the caller proceeds with the
-/// fetch rather than silently skipping it.
-pub async fn l2_snapshot_coin_hour_exists(
-    config: &Config,
-    hour_start: chrono::NaiveDateTime,
-    coin: &str,
-) -> AnySignalResult<bool> {
-    let hour_end = hour_start + chrono::Duration::hours(1);
-    let query = format!(
-        "SELECT count() FROM l2_snapshot \
-         WHERE ticker = '{}' \
-         AND ts >= '{}Z' \
-         AND ts < '{}Z'",
-        coin,
-        hour_start.format("%Y-%m-%dT%H:%M:%S"),
-        hour_end.format("%Y-%m-%dT%H:%M:%S"),
-    );
-    let url = format!("http://{}/exec", config.questdb_addr);
-    let json: serde_json::Value = reqwest::Client::new()
-        .get(&url)
-        .query(&[("query", &query)])
-        .send()
-        .await?
-        .json()
-        .await?;
-
-    if json.get("error").and_then(|v| v.as_str()).is_some() {
-        return Ok(false);
-    }
-
-    let count = json["dataset"][0][0].as_i64().unwrap_or(0);
-    Ok(count > 0)
-}
 
 // ---------------------------------------------------------------------------
 // Hyperliquid L2 orderbook ingestion

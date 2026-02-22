@@ -4,6 +4,8 @@
 pub mod adapter;
 /// api server
 pub mod api;
+/// partitioned backfill sources
+pub mod backfill;
 /// toml configuration
 pub mod config;
 /// database

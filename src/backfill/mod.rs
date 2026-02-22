@@ -1,0 +1,110 @@
+pub mod asset_ctxs;
+pub mod l2_snapshot;
+
+use crate::adapter::error::AdapterError;
+use crate::database::QuestDbClient;
+use crate::error::{AnySignalError, AnySignalResult};
+
+// ---------------------------------------------------------------------------
+// Traits
+// ---------------------------------------------------------------------------
+
+/// Marker trait for a value that identifies a single partition (e.g. a date
+/// or a date+coin pair).  Must be `Display` so it can appear in log output.
+pub trait PartitionKey: std::fmt::Display + Send + Sync {}
+
+/// A data source that can check for and ingest one partition at a time.
+///
+/// `partition_exists` only needs the DB handle; the adapter state (S3 client
+/// etc.) lives on `self` and is used by `ingest_partition`.
+#[async_trait::async_trait]
+pub trait PartitionedSource: Send + Sync {
+    type Key: PartitionKey;
+
+    /// Return `true` if this partition is already present in QuestDB.
+    /// Should return `Ok(false)` on any DB error so the backfill proceeds.
+    async fn partition_exists(db: &QuestDbClient, key: &Self::Key) -> AnySignalResult<bool>;
+
+    /// Fetch the partition from its upstream source and write it to QuestDB.
+    /// Returns the number of rows inserted.
+    async fn ingest_partition(
+        &self,
+        db: &QuestDbClient,
+        key: &Self::Key,
+    ) -> AnySignalResult<u64>;
+}
+
+// ---------------------------------------------------------------------------
+// Generic backfill loop
+// ---------------------------------------------------------------------------
+
+/// Summary of a completed (or partially completed) backfill run.
+pub struct BackfillStats {
+    pub keys_ok: Vec<String>,
+    pub keys_err: Vec<String>,
+    pub keys_skipped: Vec<String>,
+    pub rows_inserted: u64,
+}
+
+/// Drive a backfill loop over `keys`, honouring dedup and collecting results.
+///
+/// Returns `Err(msg)` immediately on an AWS credential error (all subsequent
+/// fetches would fail anyway).  Otherwise accumulates per-key outcomes into
+/// [`BackfillStats`].
+///
+/// Error classification per key:
+/// - `Unauthorized`  → fatal, return `Err` immediately
+/// - `NotFound`      → skipped (data absent from archive)
+/// - anything else   → recorded in `dates_err`, loop continues
+pub async fn run_backfill<S>(
+    source: &S,
+    db: &QuestDbClient,
+    keys: impl IntoIterator<Item = S::Key>,
+    force: bool,
+) -> Result<BackfillStats, String>
+where
+    S: PartitionedSource,
+{
+    let mut stats = BackfillStats {
+        keys_ok: Vec::new(),
+        keys_err: Vec::new(),
+        keys_skipped: Vec::new(),
+        rows_inserted: 0,
+    };
+
+    for key in keys {
+        let label = key.to_string();
+
+        if !force {
+            match S::partition_exists(db, &key).await {
+                Ok(true) => {
+                    stats.keys_skipped.push(label);
+                    continue;
+                }
+                Ok(false) => {}
+                Err(e) => {
+                    stats.keys_err.push(format!("{label}: existence check failed: {e}"));
+                    continue;
+                }
+            }
+        }
+
+        match source.ingest_partition(db, &key).await {
+            Ok(n) => {
+                stats.rows_inserted += n;
+                stats.keys_ok.push(label);
+            }
+            Err(AnySignalError::Adapter(AdapterError::Unauthorized(msg))) => {
+                return Err(format!(
+                    "AWS credential error — all further periods would fail: {msg}"
+                ));
+            }
+            Err(AnySignalError::Adapter(AdapterError::NotFound(msg))) => {
+                stats.keys_skipped.push(format!("{label}: {msg}"));
+            }
+            Err(e) => stats.keys_err.push(format!("{label}: {e}")),
+        }
+    }
+
+    Ok(stats)
+}

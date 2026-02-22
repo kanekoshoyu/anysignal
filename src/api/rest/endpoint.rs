@@ -1,10 +1,8 @@
-use crate::adapter::error::AdapterError;
-use crate::adapter::hyperliquid_s3::asset_ctxs::AssetCtxs;
-use crate::adapter::hyperliquid_s3::market_data::MarketData;
+use crate::backfill::asset_ctxs::AssetCtxsSource;
+use crate::backfill::l2_snapshot::{L2PartitionKey, L2SnapshotSource};
+use crate::backfill::run_backfill;
 use crate::config::Config;
-use crate::database::{asset_ctxs_date_exists, insert_asset_ctxs, insert_l2_snapshots,
-                       l2_snapshot_coin_hour_exists, questdb_sender};
-use crate::error::AnySignalError;
+use crate::database::QuestDbClient;
 use crate::metadata::cargo_package_version;
 use chrono::{NaiveDate, NaiveDateTime, Timelike};
 use poem_openapi::{
@@ -55,17 +53,17 @@ enum BackfillSource {
 /// Per-run summary returned by `GET /backfill`.
 #[derive(Debug, Object)]
 struct BackfillResult {
-    /// Dates (asset_ctxs) or datetimes (L2) fetched successfully.
-    dates_ok: Vec<String>,
-    /// Dates / datetimes that failed, formatted as `"<key>: <error>"`.
-    dates_err: Vec<String>,
-    /// Dates / datetimes skipped because data was already present in QuestDB.
-    dates_skipped: Vec<String>,
-    /// Number of periods fetched successfully.
+    /// Keys fetched successfully.
+    keys_ok: Vec<String>,
+    /// Keys that failed, formatted as `"<key>: <error>"`.
+    keys_err: Vec<String>,
+    /// Keys skipped because data was already present in QuestDB.
+    keys_skipped: Vec<String>,
+    /// Number of keys fetched successfully.
     total_ok: u64,
-    /// Number of periods that produced an error.
+    /// Number of keys that produced an error.
     total_err: u64,
-    /// Number of periods skipped due to existing data.
+    /// Number of keys skipped due to existing data.
     total_skipped: u64,
     /// Total rows inserted into QuestDB.
     rows_inserted: u64,
@@ -149,94 +147,44 @@ impl Endpoint {
             ));
         }
 
+        let db = match QuestDbClient::new(&self.config) {
+            Ok(c) => c,
+            Err(e) => return BackfillApiResponse::InternalError(PlainText(format!(
+                "Failed to connect to QuestDB: {e}"
+            ))),
+        };
+
         match source {
             BackfillSource::HyperliquidAssetCtxs => {
-                let fetcher = match AssetCtxs::new(&self.config).await {
-                    Ok(f) => f,
+                let source = match AssetCtxsSource::new(&self.config).await {
+                    Ok(s) => s,
                     Err(e) => return BackfillApiResponse::InternalError(PlainText(format!(
                         "Failed to initialise S3 client: {e}"
                     ))),
                 };
-                let mut sender = match questdb_sender(&self.config) {
-                    Ok(s) => s,
-                    Err(e) => return BackfillApiResponse::InternalError(PlainText(format!(
-                        "Failed to connect to QuestDB: {e}"
-                    ))),
+
+                // Build day-by-day key iterator.
+                let keys = {
+                    let mut keys = Vec::new();
+                    let mut current: NaiveDate = from.date();
+                    let end = to.date();
+                    while current <= end {
+                        keys.push(current);
+                        match current.succ_opt() {
+                            Some(next) => current = next,
+                            None => break,
+                        }
+                    }
+                    keys
                 };
 
-                let mut dates_ok: Vec<String> = Vec::new();
-                let mut dates_err: Vec<String> = Vec::new();
-                let mut dates_skipped: Vec<String> = Vec::new();
-                let mut rows_inserted: u64 = 0;
-
-                // Step day-by-day over the date portion of from..=to.
-                let mut current: NaiveDate = from.date();
-                let end_date: NaiveDate = to.date();
-
-                while current <= end_date {
-                    let date_str = current.format("%Y-%m-%d").to_string();
-
-                    if !force {
-                        match asset_ctxs_date_exists(&self.config, current).await {
-                            Ok(true) => {
-                                dates_skipped.push(date_str);
-                                match current.succ_opt() {
-                                    Some(next) => { current = next; }
-                                    None => break,
-                                }
-                                continue;
-                            }
-                            Ok(false) => {}
-                            Err(e) => {
-                                dates_err.push(format!("{date_str}: existence check failed: {e}"));
-                                match current.succ_opt() {
-                                    Some(next) => { current = next; }
-                                    None => break,
-                                }
-                                continue;
-                            }
-                        }
-                    }
-
-                    let result = async {
-                        let csv_text = fetcher.fetch_and_decompress(current).await?;
-                        let rows = AssetCtxs::parse_csv(&csv_text)?;
-                        let n = rows.len() as u64;
-                        insert_asset_ctxs(&mut sender, &rows)?;
-                        Ok::<u64, crate::error::AnySignalError>(n)
-                    }
-                    .await;
-
-                    match result {
-                        Ok(n) => { rows_inserted += n; dates_ok.push(date_str); }
-                        Err(AnySignalError::Adapter(AdapterError::Unauthorized(msg))) => {
-                            return BackfillApiResponse::InternalError(PlainText(
-                                format!("AWS credential error — all further periods would fail: {msg}")
-                            ));
-                        }
-                        Err(AnySignalError::Adapter(AdapterError::NotFound(msg))) => {
-                            dates_skipped.push(format!("{date_str}: {msg}"));
-                        }
-                        Err(e) => dates_err.push(format!("{date_str}: {e}")),
-                    }
-
-                    match current.succ_opt() {
-                        Some(next) => current = next,
-                        None => break,
-                    }
+                match run_backfill(&source, &db, keys, force).await {
+                    Ok(stats) => BackfillApiResponse::Ok(Json(stats.into())),
+                    Err(msg) => BackfillApiResponse::InternalError(PlainText(msg)),
                 }
-
-                let total_ok = dates_ok.len() as u64;
-                let total_err = dates_err.len() as u64;
-                let total_skipped = dates_skipped.len() as u64;
-                BackfillApiResponse::Ok(Json(BackfillResult {
-                    dates_ok, dates_err, dates_skipped,
-                    total_ok, total_err, total_skipped, rows_inserted,
-                }))
             }
 
             BackfillSource::HyperliquidL2Orderbook => {
-                // Parse coins (required).
                 let coin_list: Vec<String> = match coins.0 {
                     Some(s) if !s.trim().is_empty() => {
                         s.split(',').map(|c| c.trim().to_uppercase()).collect()
@@ -246,100 +194,55 @@ impl Endpoint {
                     )),
                 };
 
-                let fetcher = match MarketData::new(&self.config).await {
-                    Ok(f) => f,
+                let source = match L2SnapshotSource::new(&self.config).await {
+                    Ok(s) => s,
                     Err(e) => return BackfillApiResponse::InternalError(PlainText(format!(
                         "Failed to initialise S3 client: {e}"
                     ))),
                 };
-                let mut sender = match questdb_sender(&self.config) {
-                    Ok(s) => s,
-                    Err(e) => return BackfillApiResponse::InternalError(PlainText(format!(
-                        "Failed to connect to QuestDB: {e}"
-                    ))),
+
+                // Build hour-by-hour × coin flat key iterator.
+                let keys = {
+                    let mut keys = Vec::new();
+                    let mut current = from
+                        .date()
+                        .and_hms_opt(from.hour(), 0, 0)
+                        .unwrap_or(from);
+                    while current <= to {
+                        for coin in &coin_list {
+                            keys.push(L2PartitionKey { hour: current, coin: coin.clone() });
+                        }
+                        current += chrono::Duration::hours(1);
+                    }
+                    keys
                 };
 
-                let mut dates_ok: Vec<String> = Vec::new();
-                let mut dates_err: Vec<String> = Vec::new();
-                let mut dates_skipped: Vec<String> = Vec::new();
-                let mut rows_inserted: u64 = 0;
-
-                // Step hour-by-hour from `from` to `to` (inclusive).
-                // Truncate to whole hours so fractional minutes are ignored.
-                let mut current = from
-                    .date()
-                    .and_hms_opt(from.hour(), 0, 0)
-                    .unwrap_or(from);
-
-                while current <= to {
-                    let hour_str = current.format("%Y-%m-%dT%H:00:00").to_string();
-                    let date = current.date();
-                    let hour = current.hour() as u8;
-
-                    let mut hour_rows: u64 = 0;
-                    let mut hour_errors: Vec<String> = Vec::new();
-                    let mut all_skipped = true;
-
-                    for coin in &coin_list {
-                        if !force {
-                            match l2_snapshot_coin_hour_exists(&self.config, current, coin).await {
-                                Ok(true) => continue, // already present
-                                Ok(false) => {}
-                                Err(e) => {
-                                    hour_errors.push(format!("coin={coin}: existence check failed: {e}"));
-                                    continue;
-                                }
-                            }
-                        }
-                        all_skipped = false;
-
-                        let result = async {
-                            let snapshots = fetcher.fetch_and_parse(date, hour, coin).await?;
-                            let n = insert_l2_snapshots(&mut sender, &snapshots)?;
-                            Ok::<u64, crate::error::AnySignalError>(n as u64)
-                        }
-                        .await;
-
-                        match result {
-                            Ok(n) => hour_rows += n,
-                            Err(AnySignalError::Adapter(AdapterError::Unauthorized(msg))) => {
-                                return BackfillApiResponse::InternalError(PlainText(
-                                    format!("AWS credential error — all further periods would fail: {msg}")
-                                ));
-                            }
-                            Err(AnySignalError::Adapter(AdapterError::NotFound(msg))) => {
-                                // treat missing archive slice as skipped for this coin
-                                hour_errors.push(format!("coin={coin}: not in archive ({msg})"));
-                            }
-                            Err(e) => hour_errors.push(format!("coin={coin}: {e}")),
-                        }
-                    }
-
-                    if all_skipped && hour_errors.is_empty() {
-                        dates_skipped.push(hour_str);
-                    } else if hour_errors.is_empty() {
-                        rows_inserted += hour_rows;
-                        dates_ok.push(hour_str);
-                    } else {
-                        rows_inserted += hour_rows;
-                        dates_err.push(format!(
-                            "{hour_str}: {} error(s) — {}",
-                            hour_errors.len(),
-                            hour_errors.join("; ")
-                        ));
-                    }
-
-                    current += chrono::Duration::hours(1);
+                match run_backfill(&source, &db, keys, force).await {
+                    Ok(stats) => BackfillApiResponse::Ok(Json(stats.into())),
+                    Err(msg) => BackfillApiResponse::InternalError(PlainText(msg)),
                 }
-
-                let total_ok = dates_ok.len() as u64;
-                let total_err = dates_err.len() as u64;
-                let total_skipped = dates_skipped.len() as u64;
-                BackfillApiResponse::Ok(Json(BackfillResult {
-                    dates_ok, dates_err, dates_skipped,
-                    total_ok, total_err, total_skipped, rows_inserted,
-                }))
             }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// BackfillStats → BackfillResult
+// ---------------------------------------------------------------------------
+
+impl From<crate::backfill::BackfillStats> for BackfillResult {
+    fn from(s: crate::backfill::BackfillStats) -> Self {
+        let total_ok = s.keys_ok.len() as u64;
+        let total_err = s.keys_err.len() as u64;
+        let total_skipped = s.keys_skipped.len() as u64;
+        BackfillResult {
+            keys_ok: s.keys_ok,
+            keys_err: s.keys_err,
+            keys_skipped: s.keys_skipped,
+            total_ok,
+            total_err,
+            total_skipped,
+            rows_inserted: s.rows_inserted,
         }
     }
 }
