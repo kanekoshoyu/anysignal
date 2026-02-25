@@ -1,6 +1,13 @@
 # [signal](./README.md) changelog
 > [TODO](./src/README.md)
 
+## [0.5.0]
+### Added
+- `node_fills_by_block` backfill source (`HyperliquidNodeFillsByBlock` on `GET /backfill`)
+- Fetch timing logged per backfill partition
+### Removed
+- Redundant AWS config fields from `Config`
+
 ## [0.4.0]
 ### Changed
 - Introduced `src/backfill/` module with `PartitionedSource` trait and generic `run_backfill` loop
