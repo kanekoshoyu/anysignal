@@ -6,12 +6,12 @@ pub mod table;
 use crate::adapter::hyperliquid_s3::asset_ctxs::AssetCtxRow;
 use crate::adapter::hyperliquid_s3::market_data::L2Snapshot;
 use crate::adapter::hyperliquid_s3::node_fills_by_block::ParsedFill;
+use crate::config::Config;
 use crate::database::table::*;
 use crate::error::AnySignalResult;
 use crate::model::signal::{Signal, SignalData, SignalDataType, SignalInfo};
 use questdb::ingress::{Buffer, Sender, TimestampMicros};
 use questdb::Result as QuestResult;
-use crate::config::Config;
 use response::QuestDbResponse;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
@@ -217,7 +217,6 @@ impl QuestDbClient {
     }
 }
 
-
 // ---------------------------------------------------------------------------
 // Hyperliquid asset_ctxs ingestion
 // ---------------------------------------------------------------------------
@@ -296,8 +295,6 @@ pub fn insert_asset_ctxs(sender: &mut Sender, rows: &[AssetCtxRow]) -> QuestResu
     Ok(())
 }
 
-
-
 // ---------------------------------------------------------------------------
 // Hyperliquid L2 orderbook ingestion
 // ---------------------------------------------------------------------------
@@ -313,10 +310,7 @@ const L2_BUFFER_FLUSH_THRESHOLD: usize = 64 * 1024 * 1024;
 ///
 /// The buffer is flushed automatically at [`L2_BUFFER_FLUSH_THRESHOLD`].
 /// Returns the total number of rows written.
-pub fn insert_l2_snapshots(
-    sender: &mut Sender,
-    snapshots: &[L2Snapshot],
-) -> QuestResult<usize> {
+pub fn insert_l2_snapshots(sender: &mut Sender, snapshots: &[L2Snapshot]) -> QuestResult<usize> {
     let mut buffer = Buffer::new();
     let mut rows: usize = 0;
 
@@ -361,10 +355,7 @@ pub fn insert_l2_snapshots(
 ///
 /// The buffer is flushed automatically at [`BUFFER_FLUSH_THRESHOLD`].
 /// Returns the total number of rows written.
-pub fn insert_hyperliquid_fills(
-    sender: &mut Sender,
-    fills: &[ParsedFill],
-) -> QuestResult<usize> {
+pub fn insert_hyperliquid_fills(sender: &mut Sender, fills: &[ParsedFill]) -> QuestResult<usize> {
     let mut buffer = Buffer::new();
     let mut rows: usize = 0;
 

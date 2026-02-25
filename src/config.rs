@@ -29,8 +29,8 @@ impl Config {
             env::var("QUESTDB_ADDR").unwrap_or_else(|_| "localhost:9000".to_string());
         let questdb_user = env::var("QUESTDB_USER").ok();
         let questdb_password = env::var("QUESTDB_PASSWORD").ok();
-        let api_base_url = env::var("API_BASE_URL")
-            .unwrap_or_else(|_| "http://localhost:3000".to_string());
+        let api_base_url =
+            env::var("API_BASE_URL").unwrap_or_else(|_| "http://localhost:3000".to_string());
         Self {
             runners,
             questdb_addr,

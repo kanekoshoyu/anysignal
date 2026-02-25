@@ -33,7 +33,9 @@ pub struct L2SnapshotSource {
 
 impl L2SnapshotSource {
     pub async fn new() -> AnySignalResult<Self> {
-        Ok(Self { fetcher: MarketData::new().await? })
+        Ok(Self {
+            fetcher: MarketData::new().await?,
+        })
     }
 }
 
@@ -41,10 +43,7 @@ impl L2SnapshotSource {
 impl PartitionedSource for L2SnapshotSource {
     type Key = L2PartitionKey;
 
-    async fn partition_exists(
-        db: &QuestDbClient,
-        key: &L2PartitionKey,
-    ) -> AnySignalResult<bool> {
+    async fn partition_exists(db: &QuestDbClient, key: &L2PartitionKey) -> AnySignalResult<bool> {
         let hour_end = key.hour + chrono::Duration::hours(1);
         let sql = format!(
             "SELECT count() FROM l2_snapshot \

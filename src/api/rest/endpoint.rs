@@ -166,18 +166,22 @@ impl Endpoint {
 
         let db = match QuestDbClient::new(&self.config) {
             Ok(c) => c,
-            Err(e) => return BackfillApiResponse::InternalError(PlainText(format!(
-                "Failed to connect to QuestDB: {e}"
-            ))),
+            Err(e) => {
+                return BackfillApiResponse::InternalError(PlainText(format!(
+                    "Failed to connect to QuestDB: {e}"
+                )))
+            }
         };
 
         match source {
             BackfillSource::HyperliquidAssetCtxs => {
                 let source = match AssetCtxsSource::new().await {
                     Ok(s) => s,
-                    Err(e) => return BackfillApiResponse::InternalError(PlainText(format!(
-                        "Failed to initialise S3 client: {e}"
-                    ))),
+                    Err(e) => {
+                        return BackfillApiResponse::InternalError(PlainText(format!(
+                            "Failed to initialise S3 client: {e}"
+                        )))
+                    }
                 };
 
                 // Build day-by-day key iterator.
@@ -202,32 +206,36 @@ impl Endpoint {
             }
 
             BackfillSource::HyperliquidL2Orderbook => {
-                let coin_list: Vec<String> = match coins.0 {
-                    Some(s) if !s.trim().is_empty() => {
-                        s.split(',').map(|c| c.trim().to_uppercase()).collect()
-                    }
-                    _ => return BackfillApiResponse::BadRequest(PlainText(
-                        "'coins' is required for HyperliquidL2Orderbook (e.g. coins=BTC,ETH).".to_string(),
-                    )),
-                };
+                let coin_list: Vec<String> =
+                    match coins.0 {
+                        Some(s) if !s.trim().is_empty() => {
+                            s.split(',').map(|c| c.trim().to_uppercase()).collect()
+                        }
+                        _ => return BackfillApiResponse::BadRequest(PlainText(
+                            "'coins' is required for HyperliquidL2Orderbook (e.g. coins=BTC,ETH)."
+                                .to_string(),
+                        )),
+                    };
 
                 let source = match L2SnapshotSource::new().await {
                     Ok(s) => s,
-                    Err(e) => return BackfillApiResponse::InternalError(PlainText(format!(
-                        "Failed to initialise S3 client: {e}"
-                    ))),
+                    Err(e) => {
+                        return BackfillApiResponse::InternalError(PlainText(format!(
+                            "Failed to initialise S3 client: {e}"
+                        )))
+                    }
                 };
 
                 // Build hour-by-hour × coin flat key iterator.
                 let keys = {
                     let mut keys = Vec::new();
-                    let mut current = from
-                        .date()
-                        .and_hms_opt(from.hour(), 0, 0)
-                        .unwrap_or(from);
+                    let mut current = from.date().and_hms_opt(from.hour(), 0, 0).unwrap_or(from);
                     while current <= to {
                         for coin in &coin_list {
-                            keys.push(L2PartitionKey { hour: current, coin: coin.clone() });
+                            keys.push(L2PartitionKey {
+                                hour: current,
+                                coin: coin.clone(),
+                            });
                         }
                         current += chrono::Duration::hours(1);
                     }
@@ -243,18 +251,17 @@ impl Endpoint {
             BackfillSource::HyperliquidNodeFills => {
                 let source = match NodeFillsSource::new().await {
                     Ok(s) => s,
-                    Err(e) => return BackfillApiResponse::InternalError(PlainText(format!(
-                        "Failed to initialise S3 client: {e}"
-                    ))),
+                    Err(e) => {
+                        return BackfillApiResponse::InternalError(PlainText(format!(
+                            "Failed to initialise S3 client: {e}"
+                        )))
+                    }
                 };
 
                 // Build hour-by-hour key iterator (same pattern as L2, no coin dimension).
                 let keys = {
                     let mut keys = Vec::new();
-                    let mut current = from
-                        .date()
-                        .and_hms_opt(from.hour(), 0, 0)
-                        .unwrap_or(from);
+                    let mut current = from.date().and_hms_opt(from.hour(), 0, 0).unwrap_or(from);
                     while current <= to {
                         keys.push(NodeFillsHourKey { hour: current });
                         current += chrono::Duration::hours(1);

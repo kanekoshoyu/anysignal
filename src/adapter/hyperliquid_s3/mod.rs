@@ -39,10 +39,7 @@ pub mod prelude {
     /// - `NoSuchKey` (404) → `AdapterError::NotFound`
     /// - HTTP 401/403     → `AdapterError::Unauthorized`
     /// - anything else    → `AdapterError::FetchError`
-    pub fn classify_s3_error<E>(
-        e: &aws_sdk_s3::error::SdkError<E>,
-        key: &str,
-    ) -> AnySignalError
+    pub fn classify_s3_error<E>(e: &aws_sdk_s3::error::SdkError<E>, key: &str) -> AnySignalError
     where
         E: std::error::Error + aws_sdk_s3::error::ProvideErrorMetadata + 'static,
     {

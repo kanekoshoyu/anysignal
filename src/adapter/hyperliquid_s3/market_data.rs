@@ -83,7 +83,9 @@ impl MarketData {
         let s3_config = aws_sdk_s3::config::Builder::from(&aws_config)
             .region(Region::new(BUCKET_REGION))
             .build();
-        Ok(Self { client: Client::from_conf(s3_config) })
+        Ok(Self {
+            client: Client::from_conf(s3_config),
+        })
     }
 
     /// Fetch the raw LZ4-compressed bytes for one `(date, hour, coin)` slice.
@@ -112,15 +114,11 @@ impl MarketData {
             .await
             .map_err(|e| classify_s3_error(&e, &key))?;
 
-        let data: AggregatedBytes = resp
-            .body
-            .collect()
-            .await
-            .map_err(|e| {
-                AnySignalError::Adapter(AdapterError::FetchError(format!(
-                    "Failed to collect S3 body: {e}"
-                )))
-            })?;
+        let data: AggregatedBytes = resp.body.collect().await.map_err(|e| {
+            AnySignalError::Adapter(AdapterError::FetchError(format!(
+                "Failed to collect S3 body: {e}"
+            )))
+        })?;
 
         Ok(data.into_bytes().to_vec())
     }
@@ -144,9 +142,8 @@ impl MarketData {
         text.lines()
             .filter(|l| !l.trim().is_empty())
             .map(|line| {
-                serde_json::from_str::<L2Snapshot>(line).map_err(|e| {
-                    AnySignalError::Adapter(AdapterError::FetchError(e.to_string()))
-                })
+                serde_json::from_str::<L2Snapshot>(line)
+                    .map_err(|e| AnySignalError::Adapter(AdapterError::FetchError(e.to_string())))
             })
             .collect()
     }
@@ -191,7 +188,9 @@ mod tests {
             .behavior_version(BehaviorVersion::latest())
             .region(aws_sdk_s3::config::Region::new(BUCKET_REGION))
             .build();
-        MarketData { client: Client::from_conf(s3_config) }
+        MarketData {
+            client: Client::from_conf(s3_config),
+        }
     }
 
     const NDJSON_FIXTURE: &str = concat!(
@@ -254,9 +253,19 @@ mod tests {
     #[test]
     fn test_s3_key_format() {
         let date = chrono::NaiveDate::from_ymd_opt(2023, 4, 15).unwrap();
-        let key = format!("market_data/{}/{}/l2Book/{}.lz4", date.format("%Y%m%d"), 0u8, "BTC");
+        let key = format!(
+            "market_data/{}/{}/l2Book/{}.lz4",
+            date.format("%Y%m%d"),
+            0u8,
+            "BTC"
+        );
         assert_eq!(key, "market_data/20230415/0/l2Book/BTC.lz4");
-        let key2 = format!("market_data/{}/{}/l2Book/{}.lz4", date.format("%Y%m%d"), 12u8, "ETH");
+        let key2 = format!(
+            "market_data/{}/{}/l2Book/{}.lz4",
+            date.format("%Y%m%d"),
+            12u8,
+            "ETH"
+        );
         assert_eq!(key2, "market_data/20230415/12/l2Book/ETH.lz4");
     }
 
@@ -266,11 +275,21 @@ mod tests {
         dotenvy::dotenv().ok();
         let fetcher = MarketData::new().await.expect("S3 client init failed");
         let date = chrono::NaiveDate::from_ymd_opt(2023, 4, 15).unwrap();
-        let snapshots = fetcher.fetch_and_parse(date, 0, "BTC").await.expect("fetch failed");
-        assert!(snapshots.len() > 20_000, "expected >20k snapshots, got {}", snapshots.len());
+        let snapshots = fetcher
+            .fetch_and_parse(date, 0, "BTC")
+            .await
+            .expect("fetch failed");
+        assert!(
+            snapshots.len() > 20_000,
+            "expected >20k snapshots, got {}",
+            snapshots.len()
+        );
         let bid0 = snapshots[0].levels()[0][0].px.parse::<f64>().unwrap();
         let ask0 = snapshots[0].levels()[1][0].px.parse::<f64>().unwrap();
         assert!(ask0 > bid0, "best ask must be above best bid");
-        eprintln!("OK: {} snapshots, BTC best bid={bid0} ask={ask0}", snapshots.len());
+        eprintln!(
+            "OK: {} snapshots, BTC best bid={bid0} ask={ask0}",
+            snapshots.len()
+        );
     }
 }

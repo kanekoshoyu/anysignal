@@ -33,7 +33,9 @@ pub struct NodeFillsSource {
 
 impl NodeFillsSource {
     pub async fn new() -> AnySignalResult<Self> {
-        Ok(Self { fetcher: NodeFillsByBlock::new().await? })
+        Ok(Self {
+            fetcher: NodeFillsByBlock::new().await?,
+        })
     }
 }
 

@@ -2,7 +2,7 @@ mod endpoint;
 use crate::config::Config;
 use crate::metadata::cargo_package_version;
 use endpoint::Endpoint;
-use poem::{listener::TcpListener, Route, Server};
+use poem::{listener::TcpListener, middleware::Cors, EndpointExt, Route, Server};
 use poem_openapi::{OpenApiService, ServerObject};
 use serde_json::Error as SerdeJsonError;
 use thiserror::Error as ThisError;
@@ -47,7 +47,8 @@ pub async fn host_rest_api_server(config: Config) -> Result<(), ApiError> {
         .nest("/rapidoc", ep_rapidoc)
         .nest("/redoc", ep_redoc)
         .nest("/openapi", ep_openapi)
-        .nest("/yaml", ep_yaml);
+        .nest("/yaml", ep_yaml)
+        .with(Cors::new());
 
     Server::new(TcpListener::bind(("0.0.0.0", 3000)))
         .run(route)

@@ -1,9 +1,9 @@
 use super::prelude::*;
 use crate::adapter::{AdapterError, AdapterResult, DataSource, DataSourceType, HistoricDataSource};
-use serde::Deserialize;
 use aws_sdk_s3::config::Region;
 use aws_sdk_s3::Client;
 use aws_smithy_types::byte_stream::AggregatedBytes;
+use serde::Deserialize;
 
 const BUCKET: &str = "hyperliquid-archive";
 const BUCKET_REGION: &str = "us-east-1";
@@ -57,13 +57,16 @@ impl AssetCtxs {
         let s3_config = aws_sdk_s3::config::Builder::from(&aws_config)
             .region(Region::new(BUCKET_REGION))
             .build();
-        Ok(Self { client: Client::from_conf(s3_config) })
+        Ok(Self {
+            client: Client::from_conf(s3_config),
+        })
     }
 
     pub async fn fetch_asset_ctxs(&self, date: chrono::NaiveDate) -> AnySignalResult<Vec<u8>> {
         let key = format!("asset_ctxs/{}.csv.lz4", date.format("%Y%m%d"));
 
-        let resp = self.client
+        let resp = self
+            .client
             .get_object()
             .bucket(BUCKET)
             .key(&key)
@@ -72,9 +75,13 @@ impl AssetCtxs {
             .await
             .map_err(|e| classify_s3_error(&e, &key))?;
 
-        let data: AggregatedBytes = resp.body.collect().await
-            .map_err(|e| AnySignalError::Adapter(AdapterError::FetchError(format!("Failed to collect response body: {}", e))))?;
-        
+        let data: AggregatedBytes = resp.body.collect().await.map_err(|e| {
+            AnySignalError::Adapter(AdapterError::FetchError(format!(
+                "Failed to collect response body: {}",
+                e
+            )))
+        })?;
+
         Ok(data.into_bytes().to_vec())
     }
 
@@ -84,8 +91,7 @@ impl AssetCtxs {
         let mut decompressed = Vec::new();
         std::io::Read::read_to_end(&mut decoder, &mut decompressed)
             .map_err(|_| AnySignalError::Adapter(AdapterError::Data))?;
-        String::from_utf8(decompressed)
-            .map_err(|_| AnySignalError::Adapter(AdapterError::Data))
+        String::from_utf8(decompressed).map_err(|_| AnySignalError::Adapter(AdapterError::Data))
     }
 
     pub async fn fetch_and_decompress(&self, date: chrono::NaiveDate) -> AnySignalResult<String> {
@@ -98,9 +104,8 @@ impl AssetCtxs {
         let mut reader = csv::Reader::from_reader(csv_text.as_bytes());
         let mut rows = Vec::new();
         for result in reader.deserialize::<AssetCtxRow>() {
-            let row = result.map_err(|e| {
-                AnySignalError::Adapter(AdapterError::FetchError(e.to_string()))
-            })?;
+            let row = result
+                .map_err(|e| AnySignalError::Adapter(AdapterError::FetchError(e.to_string())))?;
             rows.push(row);
         }
         Ok(rows)
@@ -123,11 +128,14 @@ impl DataSource for AssetCtxs {
 #[async_trait::async_trait]
 impl HistoricDataSource for AssetCtxs {
     async fn fetch() -> AdapterResult<Self::DataType> {
-        let fetcher = Self::new().await
+        let fetcher = Self::new()
+            .await
             .map_err(|e| AdapterError::ConfigurationError(e.to_string()))?;
 
         let today = chrono::Utc::now().date_naive();
-        fetcher.fetch_and_decompress(today).await
+        fetcher
+            .fetch_and_decompress(today)
+            .await
             .map_err(|e| AdapterError::FetchError(e.to_string()))
     }
 }
@@ -146,7 +154,9 @@ mod tests {
             .behavior_version(BehaviorVersion::latest())
             .region(aws_sdk_s3::config::Region::new(BUCKET_REGION))
             .build();
-        AssetCtxs { client: Client::from_conf(s3_config) }
+        AssetCtxs {
+            client: Client::from_conf(s3_config),
+        }
     }
 
     // -----------------------------------------------------------------------
@@ -284,9 +294,7 @@ time,coin,funding,open_interest,prev_day_px,day_ntl_vlm,premium,oracle_px,mark_p
             .with_timezone(&chrono::Utc);
         let one_day = chrono::Duration::days(1);
 
-        let fetcher = AssetCtxs::new()
-            .await
-            .expect("should initialise S3 client");
+        let fetcher = AssetCtxs::new().await.expect("should initialise S3 client");
 
         let date = chrono::NaiveDate::from_ymd_opt(2025, 1, 1).expect("valid date");
         let csv_text = fetcher
@@ -321,16 +329,19 @@ time,coin,funding,open_interest,prev_day_px,day_ntl_vlm,premium,oracle_px,mark_p
 
             // timestamp must fall within ±1 day of 2025-01-01
             assert!(
-                row.time >= date_2025_01_01 - one_day
-                    && row.time <= date_2025_01_01 + one_day * 2,
+                row.time >= date_2025_01_01 - one_day && row.time <= date_2025_01_01 + one_day * 2,
                 "row {i}: time {} is not near 2025-01-01",
                 row.time
             );
 
             // prices must be strictly positive
-            assert!(row.prev_day_px > 0.0, "row {i}: prev_day_px <= 0: {:?}", row);
-            assert!(row.oracle_px > 0.0,   "row {i}: oracle_px  <= 0: {:?}", row);
-            assert!(row.mark_px > 0.0,     "row {i}: mark_px    <= 0: {:?}", row);
+            assert!(
+                row.prev_day_px > 0.0,
+                "row {i}: prev_day_px <= 0: {:?}",
+                row
+            );
+            assert!(row.oracle_px > 0.0, "row {i}: oracle_px  <= 0: {:?}", row);
+            assert!(row.mark_px > 0.0, "row {i}: mark_px    <= 0: {:?}", row);
 
             // optional prices, when present, must be non-negative
             // (illiquid coins with zero open interest report 0.0)
@@ -345,8 +356,16 @@ time,coin,funding,open_interest,prev_day_px,day_ntl_vlm,premium,oracle_px,mark_p
             }
 
             // volume and open interest must be non-negative
-            assert!(row.day_ntl_vlm >= 0.0, "row {i}: day_ntl_vlm < 0: {:?}", row);
-            assert!(row.open_interest >= 0.0, "row {i}: open_interest < 0: {:?}", row);
+            assert!(
+                row.day_ntl_vlm >= 0.0,
+                "row {i}: day_ntl_vlm < 0: {:?}",
+                row
+            );
+            assert!(
+                row.open_interest >= 0.0,
+                "row {i}: open_interest < 0: {:?}",
+                row
+            );
 
             // funding rate should be a small number (roughly ±5 % per hour is extreme)
             assert!(

@@ -88,7 +88,9 @@ impl NodeFillsByBlock {
         let s3_config = aws_sdk_s3::config::Builder::from(&aws_config)
             .region(Region::new(BUCKET_REGION))
             .build();
-        Ok(Self { client: Client::from_conf(s3_config) })
+        Ok(Self {
+            client: Client::from_conf(s3_config),
+        })
     }
 
     /// Fetch the LZ4-compressed NDJSON for one calendar hour.
@@ -96,7 +98,11 @@ impl NodeFillsByBlock {
     /// S3 key: `node_fills_by_block/hourly/{YYYYMMDD}/{H}.lz4`
     /// where `{H}` is the unpadded hour (0–23).
     pub async fn fetch_hour(&self, date: chrono::NaiveDate, hour: u8) -> AnySignalResult<Vec<u8>> {
-        let key = format!("node_fills_by_block/hourly/{}/{}.lz4", date.format("%Y%m%d"), hour);
+        let key = format!(
+            "node_fills_by_block/hourly/{}/{}.lz4",
+            date.format("%Y%m%d"),
+            hour
+        );
         let resp = self
             .client
             .get_object()
@@ -107,15 +113,11 @@ impl NodeFillsByBlock {
             .await
             .map_err(|e| classify_s3_error(&e, &key))?;
 
-        let data: AggregatedBytes = resp
-            .body
-            .collect()
-            .await
-            .map_err(|e| {
-                AnySignalError::Adapter(AdapterError::FetchError(format!(
-                    "Failed to collect S3 body: {e}"
-                )))
-            })?;
+        let data: AggregatedBytes = resp.body.collect().await.map_err(|e| {
+            AnySignalError::Adapter(AdapterError::FetchError(format!(
+                "Failed to collect S3 body: {e}"
+            )))
+        })?;
 
         Ok(data.into_bytes().to_vec())
     }
@@ -138,9 +140,8 @@ impl NodeFillsByBlock {
     pub fn parse_ndjson(text: &str) -> AnySignalResult<Vec<ParsedFill>> {
         let mut fills = Vec::new();
         for line in text.lines().filter(|l| !l.trim().is_empty()) {
-            let block: BlockFills = serde_json::from_str(line).map_err(|e| {
-                AnySignalError::Adapter(AdapterError::FetchError(e.to_string()))
-            })?;
+            let block: BlockFills = serde_json::from_str(line)
+                .map_err(|e| AnySignalError::Adapter(AdapterError::FetchError(e.to_string())))?;
             for (wallet, event) in block.events {
                 fills.push(ParsedFill {
                     wallet,
@@ -233,7 +234,11 @@ mod tests {
     fn s3_key_format() {
         let date = chrono::NaiveDate::from_ymd_opt(2025, 8, 1).unwrap();
         assert_eq!(
-            format!("node_fills_by_block/hourly/{}/{}.lz4", date.format("%Y%m%d"), 3u8),
+            format!(
+                "node_fills_by_block/hourly/{}/{}.lz4",
+                date.format("%Y%m%d"),
+                3u8
+            ),
             "node_fills_by_block/hourly/20250801/3.lz4"
         );
     }
@@ -242,10 +247,19 @@ mod tests {
     #[ignore = "requires real AWS credentials and outbound network access"]
     async fn integration_fetch_20250801_h3() {
         dotenvy::dotenv().ok();
-        let fetcher = NodeFillsByBlock::new().await.expect("S3 client init failed");
+        let fetcher = NodeFillsByBlock::new()
+            .await
+            .expect("S3 client init failed");
         let date = chrono::NaiveDate::from_ymd_opt(2025, 8, 1).unwrap();
-        let fills = fetcher.fetch_and_parse(date, 3).await.expect("fetch failed");
+        let fills = fetcher
+            .fetch_and_parse(date, 3)
+            .await
+            .expect("fetch failed");
         assert!(!fills.is_empty(), "expected fills for 2025-08-01 hour 3");
-        eprintln!("OK: {} fills on 2025-08-01 h3, first={:?}", fills.len(), fills.first());
+        eprintln!(
+            "OK: {} fills on 2025-08-01 h3, first={:?}",
+            fills.len(),
+            fills.first()
+        );
     }
 }

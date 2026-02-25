@@ -193,5 +193,4 @@ fn extract_video_id(url: &str) -> Option<&str> {
     url.split("v=").nth(1).and_then(|v| v.split('&').next())
 }
 
-
 mod tests {}

@@ -28,11 +28,7 @@ pub trait PartitionedSource: Send + Sync {
 
     /// Fetch the partition from its upstream source and write it to QuestDB.
     /// Returns the number of rows inserted.
-    async fn ingest_partition(
-        &self,
-        db: &QuestDbClient,
-        key: &Self::Key,
-    ) -> AnySignalResult<u64>;
+    async fn ingest_partition(&self, db: &QuestDbClient, key: &Self::Key) -> AnySignalResult<u64>;
 }
 
 // ---------------------------------------------------------------------------
@@ -87,7 +83,9 @@ where
                 }
                 Ok(false) => {}
                 Err(e) => {
-                    stats.keys_err.push(format!("{label}: existence check failed: {e}"));
+                    stats
+                        .keys_err
+                        .push(format!("{label}: existence check failed: {e}"));
                     continue;
                 }
             }

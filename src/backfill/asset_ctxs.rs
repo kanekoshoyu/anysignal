@@ -14,7 +14,9 @@ pub struct AssetCtxsSource {
 
 impl AssetCtxsSource {
     pub async fn new() -> AnySignalResult<Self> {
-        Ok(Self { fetcher: AssetCtxs::new().await? })
+        Ok(Self {
+            fetcher: AssetCtxs::new().await?,
+        })
     }
 }
 
