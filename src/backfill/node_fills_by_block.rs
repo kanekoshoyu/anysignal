@@ -65,11 +65,19 @@ impl PartitionedSource for NodeFillsSource {
         let hour = key.hour.hour() as u8;
 
         let t_fetch = std::time::Instant::now();
-        let fills = self.fetcher.fetch_and_parse(date, hour).await?;
+        let mut fills = self.fetcher.fetch_and_parse(date, hour).await?;
         let fetch_ms = t_fetch.elapsed().as_millis();
 
+        // Sort by timestamp so database receives data in order,
+        // avoiding the slow out-of-order commit path.
+        fills.sort_unstable_by_key(|f| f.time_ms);
+
         let t_insert = std::time::Instant::now();
-        let n = db.with_sender(|s| insert_hyperliquid_fills(s, &fills))?;
+        // Use block_in_place so the blocking mutex + synchronous HTTP flush                                                                                                 
+        // don't starve the Tokio thread pool.     
+        let n = tokio::task::block_in_place(|| {
+            db.with_sender(|s| insert_hyperliquid_fills(s, &fills))
+        })?;
         let insert_ms = t_insert.elapsed().as_millis();
 
         tracing::info!(key = %key, fetch_ms, insert_ms, rows = n, "partition ingested");
