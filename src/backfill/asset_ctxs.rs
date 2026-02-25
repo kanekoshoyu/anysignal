@@ -29,8 +29,8 @@ impl PartitionedSource for AssetCtxsSource {
         let sql = format!(
             "SELECT count() FROM market_data \
              WHERE source = 'HYPERLIQUID_S3' \
-             AND timestamp >= '{}T00:00:00Z' \
-             AND timestamp < '{}T00:00:00Z'",
+             AND ts >= '{}T00:00:00Z' \
+             AND ts < '{}T00:00:00Z'",
             key.format("%Y-%m-%d"),
             next_day.format("%Y-%m-%d"),
         );
