@@ -7,7 +7,7 @@ use std::env;
 /// API keys are read from `API_KEY_<ID>` (uppercase), e.g. `API_KEY_NEWSAPI`.
 /// Active runners are read from `RUNNERS` as a comma-separated list,
 /// e.g. `RUNNERS=api,coinmarketcap,newsapi`.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct Config {
     runners: Vec<String>,
     pub questdb_addr: String,

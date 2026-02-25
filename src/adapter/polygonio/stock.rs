@@ -9,7 +9,7 @@ pub async fn run_polygonio_stock(api_key: String) -> AnySignalResult<()> {
     // Establish WebSocket connection
     let stream = connect_async(url).await?.0;
     let (mut tx, mut rx) = stream.split();
-    println!("established connection");
+    tracing::info!("established connection");
 
     // auth
     {
@@ -17,7 +17,7 @@ pub async fn run_polygonio_stock(api_key: String) -> AnySignalResult<()> {
         let message = Message::Text(message.into());
         tx.send(message).await?;
     }
-    println!("auth granted");
+    tracing::info!("auth granted");
 
     // request
     {
@@ -25,14 +25,14 @@ pub async fn run_polygonio_stock(api_key: String) -> AnySignalResult<()> {
         let message = Message::Text(message.into());
         tx.send(message).await?;
     }
-    println!("requested");
+    tracing::info!("requested");
 
     // receive and print response
     loop {
         match rx.next().await {
-            Some(Ok(msg)) => println!("Received: {:?}", msg),
+            Some(Ok(msg)) => tracing::debug!(msg = ?msg, "received"),
             Some(Err(e)) => {
-                eprintln!("Error receiving message: {:?}", e);
+                tracing::error!(error = ?e, "error receiving message");
             }
             None => continue,
         };

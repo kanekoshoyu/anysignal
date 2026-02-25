@@ -13,16 +13,20 @@ use tokio::task::JoinHandle;
 #[tokio::main]
 async fn main() -> AnySignalResult<()> {
     dotenvy::dotenv().ok();
+    tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .init();
 
     // set up config to load API tokens
     let config: Config = Config::from_env();
-    println!("Config: {:#?}", config);
+    let config_json = serde_json::to_string_pretty(&config).unwrap_or_default();
+    tracing::info!("config loaded:\n{config_json}");
 
     // each runner returns signals::error::Result<()>
     let mut runners: Vec<JoinHandle<AnySignalResult<()>>> = Vec::new();
 
     if config.has_runner("api") {
-        println!("Starting API server");
+        tracing::info!("Starting API server");
         let api_config = config.clone();
         let handle = tokio::spawn(
             async move { host_rest_api_server(api_config).await }.map_err(AnySignalError::from),
@@ -31,7 +35,7 @@ async fn main() -> AnySignalResult<()> {
     }
 
     if config.has_runner("coinmarketcap") {
-        println!("Starting CoinMarketCap indexer");
+        tracing::info!("Starting CoinMarketCap indexer");
         let poll_duration = tokio::time::Duration::from_secs(10);
         let config = config.clone();
         let source =
@@ -41,7 +45,7 @@ async fn main() -> AnySignalResult<()> {
     }
 
     if config.has_runner("newsapi") {
-        println!("Starting NewsAPI indexer");
+        tracing::info!("Starting NewsAPI indexer");
         let period = tokio::time::Duration::from_secs(10);
         let config = config.clone();
 
@@ -50,7 +54,7 @@ async fn main() -> AnySignalResult<()> {
     }
 
     if config.has_runner("polygonio") {
-        println!("Starting PolygonIO indexer");
+        tracing::info!("Starting PolygonIO indexer");
         let config = config.clone();
         let api_key = config.get_api_key("polygonio")?;
         let handle = tokio::spawn(async move { run_polygonio_stock(api_key).await });
@@ -60,10 +64,10 @@ async fn main() -> AnySignalResult<()> {
     for result in join_all(runners).await {
         match result {
             Ok(Ok(())) => {}
-            Ok(Err(e)) => println!("indexer error: {:?}", e),
-            Err(e) => println!("join error: {:?}", e),
+            Ok(Err(e)) => tracing::error!(error = ?e, "indexer error"),
+            Err(e) => tracing::error!(error = ?e, "join error"),
         }
     }
-    println!("exit program gracefully");
+    tracing::info!("exit program gracefully");
     Ok(())
 }

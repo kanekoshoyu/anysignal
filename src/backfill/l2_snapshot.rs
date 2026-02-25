@@ -64,8 +64,16 @@ impl PartitionedSource for L2SnapshotSource {
     ) -> AnySignalResult<u64> {
         let date = key.hour.date();
         let hour = key.hour.hour() as u8;
+
+        let t_fetch = std::time::Instant::now();
         let snapshots = self.fetcher.fetch_and_parse(date, hour, &key.coin).await?;
+        let fetch_ms = t_fetch.elapsed().as_millis();
+
+        let t_insert = std::time::Instant::now();
         let n = db.with_sender(|s| insert_l2_snapshots(s, &snapshots))?;
+        let insert_ms = t_insert.elapsed().as_millis();
+
+        tracing::info!(key = %key, fetch_ms, insert_ms, rows = n, "partition ingested");
         Ok(n as u64)
     }
 }

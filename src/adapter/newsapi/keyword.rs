@@ -28,9 +28,9 @@ pub async fn run_news_fetcher(
         // Wait for the next tick
         interval.tick().await;
 
-        println!("Fetching NewsAPI:");
+        tracing::info!("Fetching NewsAPI");
         let response = fetch(&api_key).await?;
-        println!("artibles: {:?}", response.articles);
+        tracing::debug!(articles = ?response.articles, "fetched articles");
     }
 }
 
@@ -45,7 +45,7 @@ async fn fetch(api_key: &str) -> AnySignalResult<NewsApiResponse> {
         .send()
         .await?;
     let response = response.text().await?;
-    println!("response: {response:?}");
+    tracing::debug!(response = ?response, "raw NewsAPI response");
     serde_json::from_str::<NewsApiResponse>(&response).map_err(|_| AdapterError::Parser.into())
 }
 

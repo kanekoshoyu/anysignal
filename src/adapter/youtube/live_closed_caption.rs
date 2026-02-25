@@ -51,12 +51,9 @@ pub async fn run_live_closed_caption_fetcher(
         // Wait for the next tick
         interval.tick().await;
 
-        println!(
-            "Fetching youtube live close caption for {}:",
-            requirement.url
-        );
+        tracing::info!(url = %requirement.url, "Fetching youtube live closed caption");
         let response = fetch(&api_key, requirement).await?;
-        println!("artibles: {:?}", response);
+        tracing::debug!(response = ?response, "fetched captions");
     }
 }
 

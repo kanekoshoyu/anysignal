@@ -28,6 +28,7 @@ thiserror = "2.0.11"
 tokio = { version = "1", features = ["full"] }
 tokio-tungstenite = { version = "0.26.2", features = ["rustls-tls-native-roots"] }
 tracing = "0.1.0"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 yup-oauth2 = "12.1.0"
 aws-config = "1.5.9"
 aws-sdk-s3 = "1.67.0"

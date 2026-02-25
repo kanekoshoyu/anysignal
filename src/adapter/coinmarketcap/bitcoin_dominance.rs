@@ -35,6 +35,6 @@ pub async fn run_bitcoin_dominance(
             .await?;
 
         // write a parser for the response
-        println!("{:?}", &signal.description);
+        tracing::debug!(description = ?signal.description, "bitcoin dominance tick");
     }
 }
