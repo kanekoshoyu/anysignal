@@ -32,7 +32,9 @@ pub struct FillEvent {
     pub px: String,
     /// Quantity / size as a decimal string.
     pub sz: String,
-    /// Trade direction: `"Buy"` or `"Sell"`.
+    /// Raw market side: `"B"` (buy) or `"A"` (ask/sell).
+    pub side: String,
+    /// Trade direction: `"Buy"`, `"Sell"`, `"Open Long"`, `"Close Long"`, etc.
     pub dir: String,
     /// Exchange timestamp in milliseconds.
     pub time: i64,
@@ -63,7 +65,10 @@ pub struct ParsedFill {
     pub coin: String,
     /// Exchange timestamp in milliseconds.
     pub time_ms: i64,
-    pub trade_direction: String,
+    /// `"buy"` or `"sell"` — normalised from the raw `"B"` / `"A"` side field.
+    pub side: String,
+    /// Verbose category: `"Buy"`, `"Sell"`, `"Open Long"`, `"Close Long"`, etc.
+    pub category: String,
     pub is_taker: bool,
     pub price: f64,
     pub quantity: f64,
@@ -143,11 +148,17 @@ impl NodeFillsByBlock {
             let block: BlockFills = serde_json::from_str(line)
                 .map_err(|e| AnySignalError::Adapter(AdapterError::FetchError(e.to_string())))?;
             for (wallet, event) in block.events {
+                let side = if event.side == "B" {
+                    "buy".to_string()
+                } else {
+                    "sell".to_string()
+                };
                 fills.push(ParsedFill {
                     wallet,
                     coin: event.coin,
                     time_ms: event.time,
-                    trade_direction: event.dir,
+                    side,
+                    category: event.dir,
                     is_taker: event.crossed,
                     price: event.px.parse().unwrap_or(0.0),
                     quantity: event.sz.parse().unwrap_or(0.0),
@@ -207,14 +218,16 @@ mod tests {
         assert_eq!(buy.wallet, "0x2e434472e65249f6b8eb3bb5d240f0682c1c7a9f");
         assert_eq!(buy.coin, "@142");
         assert_eq!(buy.time_ms, 1754017199857);
-        assert_eq!(buy.trade_direction, "Buy");
+        assert_eq!(buy.side, "buy");
+        assert_eq!(buy.category, "Buy");
         assert!(buy.is_taker);
         assert!((buy.price - 115865.0).abs() < f64::EPSILON);
         assert!((buy.quantity - 0.0001).abs() < 1e-9);
         assert!((buy.realized_pnl - 0.0).abs() < f64::EPSILON);
 
         let sell = &fills[1];
-        assert_eq!(sell.trade_direction, "Sell");
+        assert_eq!(sell.side, "sell");
+        assert_eq!(sell.category, "Sell");
         assert!(!sell.is_taker);
         assert!((sell.realized_pnl - (-0.00701348)).abs() < 1e-9);
     }

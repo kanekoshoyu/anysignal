@@ -37,7 +37,18 @@
           "symbolTableSize": 0
         },
         {
-          "column": "trade_direction",
+          "column": "side",
+          "type": "SYMBOL",
+          "designated": false,
+          "upsertKey": false,
+          "indexed": false,
+          "indexBlockCapacity": 256,
+          "symbolCached": true,
+          "symbolCapacity": 256,
+          "symbolTableSize": 0
+        },
+        {
+          "column": "category",
           "type": "SYMBOL",
           "designated": false,
           "upsertKey": false,

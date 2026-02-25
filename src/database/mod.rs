@@ -370,7 +370,8 @@ pub fn insert_hyperliquid_fills(sender: &mut Sender, fills: &[ParsedFill]) -> Qu
             .table("hyperliquid_fill")?
             .symbol("coin", &fill.coin)?
             .symbol("wallet", &fill.wallet)?
-            .symbol("trade_direction", &fill.trade_direction)?
+            .symbol("side", &fill.side)?
+            .symbol("category", &fill.category)?
             .symbol("source", "HYPERLIQUID_NODE")?
             .column_bool("is_taker", fill.is_taker)?
             .column_f64("price", fill.price)?

@@ -1,6 +1,11 @@
 # [signal](./README.md) changelog
 > [TODO](./src/README.md)
 
+## [0.7.0]
+### Changed
+- `hyperliquid_fill`: added `side` column (`"buy"` / `"sell"`, normalised from raw `"B"` / `"A"`)
+- `hyperliquid_fill`: renamed `trade_direction` → `category` (values: `"Open Long"`, `"Close Short"`, `"Buy"`, `"Sell"`, etc.)
+
 ## [0.6.0]
 ### Chnaged
 - deprecated `l2_snapshot` with `l2_orderbook`
