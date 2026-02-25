@@ -13,8 +13,6 @@ pub struct Config {
     pub questdb_addr: String,
     pub questdb_user: Option<String>,
     pub questdb_password: Option<String>,
-    pub s3_bucket: String,
-    pub aws_region: String,
 }
 
 impl Config {
@@ -30,18 +28,11 @@ impl Config {
             env::var("QUESTDB_ADDR").unwrap_or_else(|_| "localhost:9000".to_string());
         let questdb_user = env::var("QUESTDB_USER").ok();
         let questdb_password = env::var("QUESTDB_PASSWORD").ok();
-        let s3_bucket = env::var("HYPERLIQUID_S3_BUCKET")
-            .unwrap_or_else(|_| "hyperliquid-archive".to_string());
-        let aws_region =
-            env::var("AWS_REGION").unwrap_or_else(|_| "us-east-1".to_string());
-
         Self {
             runners,
             questdb_addr,
             questdb_user,
             questdb_password,
-            s3_bucket,
-            aws_region,
         }
     }
 

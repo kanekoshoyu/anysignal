@@ -1,12 +1,14 @@
 use super::prelude::*;
 use crate::adapter::{AdapterError, DataSource, DataSourceType};
-use crate::config::Config;
 use aws_sdk_s3::config::Region;
 use aws_sdk_s3::types::RequestPayer;
 use aws_sdk_s3::Client;
 use aws_smithy_types::byte_stream::AggregatedBytes;
 use serde::Deserialize;
 use std::io::Read;
+
+const BUCKET: &str = "hyperliquid-archive";
+const BUCKET_REGION: &str = "us-east-1";
 
 // ---------------------------------------------------------------------------
 // Wire types
@@ -71,21 +73,17 @@ impl L2Snapshot {
 
 pub struct MarketData {
     pub client: Client,
-    pub bucket: String,
 }
 
 impl MarketData {
-    pub async fn new(config: &Config) -> AnySignalResult<Self> {
-        let bucket = config.s3_bucket.clone();
-        let region = Region::new(config.aws_region.clone());
-
+    pub async fn new() -> AnySignalResult<Self> {
         let aws_config = aws_config::defaults(aws_config::BehaviorVersion::latest())
-            .region(region)
             .load()
             .await;
-
-        let client = Client::new(&aws_config);
-        Ok(Self { client, bucket })
+        let s3_config = aws_sdk_s3::config::Builder::from(&aws_config)
+            .region(Region::new(BUCKET_REGION))
+            .build();
+        Ok(Self { client: Client::from_conf(s3_config) })
     }
 
     /// Fetch the raw LZ4-compressed bytes for one `(date, hour, coin)` slice.
@@ -107,7 +105,7 @@ impl MarketData {
         let resp = self
             .client
             .get_object()
-            .bucket(&self.bucket)
+            .bucket(BUCKET)
             .key(&key)
             .request_payer(RequestPayer::Requester)
             .send()
@@ -191,10 +189,9 @@ mod tests {
     fn dummy_fetcher() -> MarketData {
         let s3_config = S3ConfigBuilder::new()
             .behavior_version(BehaviorVersion::latest())
-            .region(aws_sdk_s3::config::Region::new("us-east-1"))
+            .region(aws_sdk_s3::config::Region::new(BUCKET_REGION))
             .build();
-        let client = Client::from_conf(s3_config);
-        MarketData { client, bucket: "test-bucket".to_string() }
+        MarketData { client: Client::from_conf(s3_config) }
     }
 
     const NDJSON_FIXTURE: &str = concat!(
@@ -267,8 +264,7 @@ mod tests {
     #[ignore = "requires real AWS credentials and outbound network access"]
     async fn integration_fetch_btc_20230415_hour0() {
         dotenvy::dotenv().ok();
-        let config = Config::from_env();
-        let fetcher = MarketData::new(&config).await.expect("S3 client init failed");
+        let fetcher = MarketData::new().await.expect("S3 client init failed");
         let date = chrono::NaiveDate::from_ymd_opt(2023, 4, 15).unwrap();
         let snapshots = fetcher.fetch_and_parse(date, 0, "BTC").await.expect("fetch failed");
         assert!(snapshots.len() > 20_000, "expected >20k snapshots, got {}", snapshots.len());

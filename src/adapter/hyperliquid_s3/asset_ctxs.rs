@@ -1,11 +1,13 @@
 use super::prelude::*;
 use crate::adapter::{AdapterError, AdapterResult, DataSource, DataSourceType, HistoricDataSource};
-use crate::config::Config;
 use serde::Deserialize;
 use aws_sdk_s3::config::Region;
 use aws_sdk_s3::operation::get_object::GetObjectError;
 use aws_sdk_s3::Client;
 use aws_smithy_types::byte_stream::AggregatedBytes;
+
+const BUCKET: &str = "hyperliquid-archive";
+const BUCKET_REGION: &str = "us-east-1";
 
 /// One row from an `asset_ctxs/YYYYMMDD.csv.lz4` file.
 ///
@@ -46,22 +48,17 @@ fn de_opt_f64<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<f64>, D::
 
 pub struct AssetCtxs {
     pub client: Client,
-    pub bucket: String,
 }
 
 impl AssetCtxs {
-    pub async fn new(config: &Config) -> AnySignalResult<Self> {
-        let bucket = config.s3_bucket.clone();
-        let region = Region::new(config.aws_region.clone());
-
+    pub async fn new() -> AnySignalResult<Self> {
         let aws_config = aws_config::defaults(aws_config::BehaviorVersion::latest())
-            .region(region)
             .load()
             .await;
-
-        let client = Client::new(&aws_config);
-
-        Ok(Self { client, bucket })
+        let s3_config = aws_sdk_s3::config::Builder::from(&aws_config)
+            .region(Region::new(BUCKET_REGION))
+            .build();
+        Ok(Self { client: Client::from_conf(s3_config) })
     }
 
     pub async fn fetch_asset_ctxs(&self, date: chrono::NaiveDate) -> AnySignalResult<Vec<u8>> {
@@ -69,7 +66,7 @@ impl AssetCtxs {
 
         let resp = self.client
             .get_object()
-            .bucket(&self.bucket)
+            .bucket(BUCKET)
             .key(&key)
             .request_payer(aws_sdk_s3::types::RequestPayer::Requester)
             .send()
@@ -127,8 +124,7 @@ impl DataSource for AssetCtxs {
 #[async_trait::async_trait]
 impl HistoricDataSource for AssetCtxs {
     async fn fetch() -> AdapterResult<Self::DataType> {
-        let config = Config::from_env();
-        let fetcher = Self::new(&config).await
+        let fetcher = Self::new().await
             .map_err(|e| AdapterError::ConfigurationError(e.to_string()))?;
 
         let today = chrono::Utc::now().date_naive();
@@ -149,13 +145,9 @@ mod tests {
     fn dummy_fetcher() -> AssetCtxs {
         let s3_config = S3ConfigBuilder::new()
             .behavior_version(BehaviorVersion::latest())
-            .region(aws_sdk_s3::config::Region::new("us-east-1"))
+            .region(aws_sdk_s3::config::Region::new(BUCKET_REGION))
             .build();
-        let client = Client::from_conf(s3_config);
-        AssetCtxs {
-            client,
-            bucket: "test-bucket".to_string(),
-        }
+        AssetCtxs { client: Client::from_conf(s3_config) }
     }
 
     // -----------------------------------------------------------------------
@@ -293,8 +285,7 @@ time,coin,funding,open_interest,prev_day_px,day_ntl_vlm,premium,oracle_px,mark_p
             .with_timezone(&chrono::Utc);
         let one_day = chrono::Duration::days(1);
 
-        let config = Config::from_env();
-        let fetcher = AssetCtxs::new(&config)
+        let fetcher = AssetCtxs::new()
             .await
             .expect("should initialise S3 client");
 

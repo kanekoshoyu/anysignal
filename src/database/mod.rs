@@ -5,6 +5,7 @@ pub mod table;
 
 use crate::adapter::hyperliquid_s3::asset_ctxs::AssetCtxRow;
 use crate::adapter::hyperliquid_s3::market_data::L2Snapshot;
+use crate::adapter::hyperliquid_s3::node_fills_by_block::ParsedFill;
 use crate::database::table::*;
 use crate::error::AnySignalResult;
 use crate::model::signal::{Signal, SignalData, SignalDataType, SignalInfo};
@@ -341,6 +342,51 @@ pub fn insert_l2_snapshots(
         }
 
         if buffer.len() >= L2_BUFFER_FLUSH_THRESHOLD {
+            sender.flush(&mut buffer)?;
+        }
+    }
+
+    if !buffer.is_empty() {
+        sender.flush(&mut buffer)?;
+    }
+
+    Ok(rows)
+}
+
+// ---------------------------------------------------------------------------
+// Hyperliquid node fills ingestion
+// ---------------------------------------------------------------------------
+
+/// Batch-insert a slice of [`ParsedFill`]s into the `hyperliquid_fill` table.
+///
+/// The buffer is flushed automatically at [`BUFFER_FLUSH_THRESHOLD`].
+/// Returns the total number of rows written.
+pub fn insert_hyperliquid_fills(
+    sender: &mut Sender,
+    fills: &[ParsedFill],
+) -> QuestResult<usize> {
+    let mut buffer = Buffer::new();
+    let mut rows: usize = 0;
+
+    for fill in fills {
+        let ts_us = TimestampMicros::new(fill.time_ms * 1_000); // ms → µs
+
+        buffer
+            .table("hyperliquid_fill")?
+            .symbol("coin", &fill.coin)?
+            .symbol("wallet", &fill.wallet)?
+            .symbol("trade_direction", &fill.trade_direction)?
+            .symbol("source", "HYPERLIQUID_NODE")?
+            .column_bool("is_taker", fill.is_taker)?
+            .column_f64("price", fill.price)?
+            .column_f64("quantity", fill.quantity)?
+            .column_f64("position_before", fill.position_before)?
+            .column_f64("realized_pnl", fill.realized_pnl)?
+            .at(ts_us)?;
+
+        rows += 1;
+
+        if buffer.len() >= BUFFER_FLUSH_THRESHOLD {
             sender.flush(&mut buffer)?;
         }
     }

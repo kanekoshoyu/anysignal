@@ -1,6 +1,5 @@
 use super::{PartitionKey, PartitionedSource};
 use crate::adapter::hyperliquid_s3::asset_ctxs::AssetCtxs;
-use crate::config::Config;
 use crate::database::{insert_asset_ctxs, QuestDbClient};
 use crate::error::AnySignalResult;
 use chrono::NaiveDate;
@@ -14,8 +13,8 @@ pub struct AssetCtxsSource {
 }
 
 impl AssetCtxsSource {
-    pub async fn new(config: &Config) -> AnySignalResult<Self> {
-        Ok(Self { fetcher: AssetCtxs::new(config).await? })
+    pub async fn new() -> AnySignalResult<Self> {
+        Ok(Self { fetcher: AssetCtxs::new().await? })
     }
 }
 

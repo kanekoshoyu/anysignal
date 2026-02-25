@@ -1,5 +1,6 @@
 use crate::backfill::asset_ctxs::AssetCtxsSource;
 use crate::backfill::l2_snapshot::{L2PartitionKey, L2SnapshotSource};
+use crate::backfill::node_fills_by_block::{NodeFillsHourKey, NodeFillsSource};
 use crate::backfill::run_backfill;
 use crate::config::Config;
 use crate::database::QuestDbClient;
@@ -41,13 +42,25 @@ enum BackfillSource {
     /// Fetches `s3://hyperliquid-archive/asset_ctxs/YYYYMMDD.csv.lz4` for
     /// every calendar day in the requested range.
     /// Only the date part of `from`/`to` is used.
+    ///
+    /// **Data available from:** `2023-05-20`
     HyperliquidAssetCtxs,
 
     /// Hyperliquid L2 orderbook snapshots from the public S3 archive.
     ///
     /// Fetches `s3://hyperliquid-archive/market_data/{YYYYMMDD}/{H}/l2Book/{coin}.lz4`
     /// iterating **hour-by-hour** from `from` to `to`.  Requires `coins`.
+    ///
+    /// **Data available from:** `2023-04-15`
     HyperliquidL2Orderbook,
+
+    /// Hyperliquid node fills batched by block, from `s3://hl-mainnet-node-data`.
+    ///
+    /// Fetches `node_fills_by_block/hourly/{YYYYMMDD}/{H}.lz4` for every hour in
+    /// the requested range and inserts into `hyperliquid_fill`.
+    ///
+    /// **Data available from:** `2025-07-27`
+    HyperliquidNodeFills,
 }
 
 /// Per-run summary returned by `GET /backfill`.
@@ -67,6 +80,8 @@ struct BackfillResult {
     total_skipped: u64,
     /// Total rows inserted into QuestDB.
     rows_inserted: u64,
+    /// Wall-clock milliseconds from first key to last flush.
+    elapsed_ms: u64,
 }
 
 #[derive(ApiResponse)]
@@ -105,17 +120,19 @@ impl Endpoint {
     /// `from` and `to` accept either a full datetime (`2024-01-01T00:00:00`) or a
     /// date-only value (`2024-01-01`), which is treated as midnight (`T00:00:00`).
     ///
-    /// - `HyperliquidAssetCtxs` — steps day-by-day using only the date part.
-    /// - `HyperliquidL2Orderbook` — steps **hour-by-hour** from `from` to `to`;
+    /// - `HyperliquidAssetCtxs` — steps daily using only the date part.
+    /// - `HyperliquidL2Orderbook` — steps hourly from `from` to `to`;
     ///   requires `coins` (comma-separated tickers, e.g. `BTC,ETH`).
+    /// - `HyperliquidNodeFills` — steps hour-by-hour; inserts into `hyperliquid_fill`.
     ///
     /// By default, periods already present in QuestDB are skipped.
     /// Set `force=true` to bypass that check and always fetch+insert.
     ///
-    /// | `source`                  | Steps | Extra params |
-    /// |---------------------------|-------|--------------|
-    /// | `HyperliquidAssetCtxs`    | daily | — |
-    /// | `HyperliquidL2Orderbook`  | hourly | `coins` (required) |
+    /// | `source`                  | Steps  | Available from | Extra params       |
+    /// |---------------------------|--------|----------------|--------------------|
+    /// | `HyperliquidAssetCtxs`    | daily  | 2023-05-20     | —                  |
+    /// | `HyperliquidL2Orderbook`  | hourly | 2023-04-15     | `coins` (required) |
+    /// | `HyperliquidNodeFills`    | hourly | 2025-07-27     | —                  |
     #[oai(path = "/backfill", method = "get")]
     async fn backfill(
         &self,
@@ -156,7 +173,7 @@ impl Endpoint {
 
         match source {
             BackfillSource::HyperliquidAssetCtxs => {
-                let source = match AssetCtxsSource::new(&self.config).await {
+                let source = match AssetCtxsSource::new().await {
                     Ok(s) => s,
                     Err(e) => return BackfillApiResponse::InternalError(PlainText(format!(
                         "Failed to initialise S3 client: {e}"
@@ -194,7 +211,7 @@ impl Endpoint {
                     )),
                 };
 
-                let source = match L2SnapshotSource::new(&self.config).await {
+                let source = match L2SnapshotSource::new().await {
                     Ok(s) => s,
                     Err(e) => return BackfillApiResponse::InternalError(PlainText(format!(
                         "Failed to initialise S3 client: {e}"
@@ -212,6 +229,34 @@ impl Endpoint {
                         for coin in &coin_list {
                             keys.push(L2PartitionKey { hour: current, coin: coin.clone() });
                         }
+                        current += chrono::Duration::hours(1);
+                    }
+                    keys
+                };
+
+                match run_backfill(&source, &db, keys, force).await {
+                    Ok(stats) => BackfillApiResponse::Ok(Json(stats.into())),
+                    Err(msg) => BackfillApiResponse::InternalError(PlainText(msg)),
+                }
+            }
+
+            BackfillSource::HyperliquidNodeFills => {
+                let source = match NodeFillsSource::new().await {
+                    Ok(s) => s,
+                    Err(e) => return BackfillApiResponse::InternalError(PlainText(format!(
+                        "Failed to initialise S3 client: {e}"
+                    ))),
+                };
+
+                // Build hour-by-hour key iterator (same pattern as L2, no coin dimension).
+                let keys = {
+                    let mut keys = Vec::new();
+                    let mut current = from
+                        .date()
+                        .and_hms_opt(from.hour(), 0, 0)
+                        .unwrap_or(from);
+                    while current <= to {
+                        keys.push(NodeFillsHourKey { hour: current });
                         current += chrono::Duration::hours(1);
                     }
                     keys
@@ -243,6 +288,7 @@ impl From<crate::backfill::BackfillStats> for BackfillResult {
             total_err,
             total_skipped,
             rows_inserted: s.rows_inserted,
+            elapsed_ms: s.elapsed_ms,
         }
     }
 }

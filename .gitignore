@@ -2,3 +2,4 @@
 .env
 /config
 # config.toml no longer used — everything is configured via env vars
+/sample

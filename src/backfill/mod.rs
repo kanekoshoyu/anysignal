@@ -1,5 +1,6 @@
 pub mod asset_ctxs;
 pub mod l2_snapshot;
+pub mod node_fills_by_block;
 
 use crate::adapter::error::AdapterError;
 use crate::database::QuestDbClient;
@@ -44,6 +45,7 @@ pub struct BackfillStats {
     pub keys_err: Vec<String>,
     pub keys_skipped: Vec<String>,
     pub rows_inserted: u64,
+    pub elapsed_ms: u64,
 }
 
 /// Drive a backfill loop over `keys`, honouring dedup and collecting results.
@@ -65,11 +67,13 @@ pub async fn run_backfill<S>(
 where
     S: PartitionedSource,
 {
+    let started = std::time::Instant::now();
     let mut stats = BackfillStats {
         keys_ok: Vec::new(),
         keys_err: Vec::new(),
         keys_skipped: Vec::new(),
         rows_inserted: 0,
+        elapsed_ms: 0,
     };
 
     for key in keys {
@@ -106,5 +110,6 @@ where
         }
     }
 
+    stats.elapsed_ms = started.elapsed().as_millis() as u64;
     Ok(stats)
 }

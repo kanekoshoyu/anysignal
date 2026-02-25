@@ -10,7 +10,6 @@ pub mod node_fills_by_block;
 
 pub mod prelude {
     pub use crate::adapter::AdapterError;
-    pub use crate::config::Config;
     pub use crate::error::{AnySignalError, AnySignalResult};
     pub use crate::model::signal::*;
     pub const SOURCE: &str = "HYPERLIQUID_S3";
