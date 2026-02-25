@@ -1,5 +1,5 @@
 use crate::backfill::asset_ctxs::AssetCtxsSource;
-use crate::backfill::l2_snapshot::{L2PartitionKey, L2SnapshotSource};
+use crate::backfill::l2_orderbook::{L2PartitionKey, L2SnapshotSource};
 use crate::backfill::node_fills_by_block::{NodeFillsHourKey, NodeFillsSource};
 use crate::backfill::run_backfill;
 use crate::config::Config;

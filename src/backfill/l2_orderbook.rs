@@ -46,7 +46,7 @@ impl PartitionedSource for L2SnapshotSource {
     async fn partition_exists(db: &QuestDbClient, key: &L2PartitionKey) -> AnySignalResult<bool> {
         let hour_end = key.hour + chrono::Duration::hours(1);
         let sql = format!(
-            "SELECT count() FROM l2_snapshot \
+            "SELECT count() FROM l2_orderbook \
              WHERE ticker = '{}' \
              AND ts >= '{}Z' \
              AND ts < '{}Z'",

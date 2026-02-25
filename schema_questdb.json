@@ -115,76 +115,6 @@
         }
       ]
     },
-    "l2_snapshot": {
-      "columns": [
-        {
-          "column": "ticker",
-          "type": "SYMBOL",
-          "designated": false,
-          "upsertKey": false,
-          "indexed": false,
-          "indexBlockCapacity": 0,
-          "symbolCached": true,
-          "symbolCapacity": 256,
-          "symbolTableSize": 3
-        },
-        {
-          "column": "side",
-          "type": "SYMBOL",
-          "designated": false,
-          "upsertKey": false,
-          "indexed": false,
-          "indexBlockCapacity": 0,
-          "symbolCached": true,
-          "symbolCapacity": 256,
-          "symbolTableSize": 2
-        },
-        {
-          "column": "level",
-          "type": "LONG",
-          "designated": false,
-          "upsertKey": false,
-          "indexed": false,
-          "indexBlockCapacity": 0,
-          "symbolCached": false,
-          "symbolCapacity": 0,
-          "symbolTableSize": 0
-        },
-        {
-          "column": "price",
-          "type": "DOUBLE",
-          "designated": false,
-          "upsertKey": false,
-          "indexed": false,
-          "indexBlockCapacity": 0,
-          "symbolCached": false,
-          "symbolCapacity": 0,
-          "symbolTableSize": 0
-        },
-        {
-          "column": "quantity",
-          "type": "DOUBLE",
-          "designated": false,
-          "upsertKey": false,
-          "indexed": false,
-          "indexBlockCapacity": 0,
-          "symbolCached": false,
-          "symbolCapacity": 0,
-          "symbolTableSize": 0
-        },
-        {
-          "column": "timestamp",
-          "type": "TIMESTAMP",
-          "designated": true,
-          "upsertKey": false,
-          "indexed": false,
-          "indexBlockCapacity": 0,
-          "symbolCached": false,
-          "symbolCapacity": 0,
-          "symbolTableSize": 0
-        }
-      ]
-    },
     "l2_orderbook": {
       "columns": [
         {
@@ -196,6 +126,17 @@
           "indexBlockCapacity": 0,
           "symbolCached": false,
           "symbolCapacity": 0,
+          "symbolTableSize": 0
+        },
+        {
+          "column": "source",
+          "type": "SYMBOL",
+          "designated": false,
+          "upsertKey": false,
+          "indexed": false,
+          "indexBlockCapacity": 256,
+          "symbolCached": true,
+          "symbolCapacity": 256,
           "symbolTableSize": 0
         },
         {

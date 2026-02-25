@@ -210,10 +210,13 @@ impl QuestDbClient {
             .await?
             .json()
             .await?;
-        if json.get("error").and_then(|v| v.as_str()).is_some() {
+        if let Some(err) = json.get("error").and_then(|v| v.as_str()) {
+            tracing::warn!(sql, questdb_error = err, "QuestDB count query failed; treating as 0");
             return Ok(0);
         }
-        Ok(json["dataset"][0][0].as_i64().unwrap_or(0))
+        let count = json["dataset"][0][0].as_i64().unwrap_or(0);
+        tracing::debug!(sql, count, "QuestDB count");
+        Ok(count)
     }
 }
 
@@ -302,7 +305,7 @@ pub fn insert_asset_ctxs(sender: &mut Sender, rows: &[AssetCtxRow]) -> QuestResu
 /// Flush the L2 buffer when it exceeds 64 MiB — well below QuestDB's 100 MiB cap.
 const L2_BUFFER_FLUSH_THRESHOLD: usize = 64 * 1024 * 1024;
 
-/// Batch-insert L2 orderbook snapshots into the `l2_snapshot` table.
+/// Batch-insert L2 orderbook snapshots into the `l2_orderbook` table.
 ///
 /// Each [`L2Snapshot`] expands to one row per price level per side:
 ///   - `levels[0]` → side `"bid"`, level index 0, 1, 2, …
@@ -323,7 +326,8 @@ pub fn insert_l2_snapshots(sender: &mut Sender, snapshots: &[L2Snapshot]) -> Que
                 let quantity: f64 = level.sz.parse().unwrap_or(0.0);
 
                 buffer
-                    .table("l2_snapshot")?
+                    .table("l2_orderbook")?
+                    .symbol("source", "HYPERLIQUID_S3")?
                     .symbol("ticker", snapshot.coin())?
                     .symbol("side", side_str)?
                     .column_i64("level", level_idx as i64)?

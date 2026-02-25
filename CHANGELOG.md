@@ -1,6 +1,10 @@
 # [signal](./README.md) changelog
 > [TODO](./src/README.md)
 
+## [0.6.0]
+### Chnaged
+- deprecated `l2_snapshot` with `l2_orderbook`
+
 ## [0.5.0]
 ### Added
 - `node_fills_by_block` backfill source (`HyperliquidNodeFillsByBlock` on `GET /backfill`)
