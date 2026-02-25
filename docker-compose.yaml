@@ -19,4 +19,5 @@ services:
       QUESTDB_ADDR: ${QUESTDB_ADDR:-localhost:9000}
       QUESTDB_USER: ${QUESTDB_USER}
       QUESTDB_PASSWORD: ${QUESTDB_PASSWORD}
+      API_BASE_URL: ${API_BASE_URL:-http://localhost:3000}
       RUST_LOG: ${RUST_LOG:-info}

@@ -13,6 +13,7 @@ pub struct Config {
     pub questdb_addr: String,
     pub questdb_user: Option<String>,
     pub questdb_password: Option<String>,
+    pub api_base_url: String,
 }
 
 impl Config {
@@ -28,11 +29,14 @@ impl Config {
             env::var("QUESTDB_ADDR").unwrap_or_else(|_| "localhost:9000".to_string());
         let questdb_user = env::var("QUESTDB_USER").ok();
         let questdb_password = env::var("QUESTDB_PASSWORD").ok();
+        let api_base_url = env::var("API_BASE_URL")
+            .unwrap_or_else(|_| "http://localhost:3000".to_string());
         Self {
             runners,
             questdb_addr,
             questdb_user,
             questdb_password,
+            api_base_url,
         }
     }
 

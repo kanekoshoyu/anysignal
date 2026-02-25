@@ -19,7 +19,7 @@ pub enum ApiError {
 
 // host a rest api server
 pub async fn host_rest_api_server(config: Config) -> Result<(), ApiError> {
-    let url = "http://localhost:3000";
+    let url = config.api_base_url.clone();
 
     let desciption = "signal indexer";
 
@@ -29,7 +29,7 @@ pub async fn host_rest_api_server(config: Config) -> Result<(), ApiError> {
     let service_api_root = {
         let all_ep = Endpoint { config };
         OpenApiService::new(all_ep, title, cargo_package_version())
-            .server(ServerObject::new(url))
+            .server(ServerObject::new(&url))
             .description(desciption)
     };
 
