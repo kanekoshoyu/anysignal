@@ -62,8 +62,6 @@ docker run --rm \
   -e QUESTDB_ADDR=host:9000 \
   -e AWS_ACCESS_KEY_ID=... \
   -e AWS_SECRET_ACCESS_KEY=... \
-  -e AWS_REGION=us-east-1 \
-  -e HYPERLIQUID_S3_BUCKET=hyperliquid-archive \
   -e RUNNERS=hyperliquid \
   -p 3000:3000 \
   anysignal

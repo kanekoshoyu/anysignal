@@ -2,7 +2,6 @@ use super::prelude::*;
 use crate::adapter::{AdapterError, AdapterResult, DataSource, DataSourceType, HistoricDataSource};
 use serde::Deserialize;
 use aws_sdk_s3::config::Region;
-use aws_sdk_s3::operation::get_object::GetObjectError;
 use aws_sdk_s3::Client;
 use aws_smithy_types::byte_stream::AggregatedBytes;
 

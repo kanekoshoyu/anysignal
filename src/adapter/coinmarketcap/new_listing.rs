@@ -1,6 +1,7 @@
 use super::prelude::*;
 
 /// free tier
+#[allow(clippy::todo)]
 pub async fn run_signal_new_listing() -> AnySignalResult<()> {
     // historic listing
     todo!("implement new listing");

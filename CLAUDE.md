@@ -5,7 +5,7 @@ Rust async service that backfills and streams trading signals/market data into *
 
 ## Key architecture
 - **`src/main.rs`** — spawns tokio tasks for each enabled runner (`RUNNERS=api,coinmarketcap,…`)
-- **`src/config.rs`** — `Config` struct (`questdb_addr`, `s3_bucket`, `aws_region`, etc.); passed by reference everywhere — never read env vars directly in business logic
+- **`src/config.rs`** — `Config` struct (`questdb_addr`, etc.); passed by reference everywhere — never read env vars directly in business logic
 - **`src/adapter/`** — one sub-module per data source; implement `DataSource` / `HistoricDataSource` traits
 - **`src/database/mod.rs`** — QuestDB ILP writers (batch via `Buffer`, flush via `Sender`)
 - **`src/api/rest/endpoint.rs`** — Poem/OpenAPI REST; `GET /backfill` is the main entry point
