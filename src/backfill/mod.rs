@@ -1,5 +1,6 @@
 pub mod asset_ctxs;
 pub mod l2_orderbook;
+pub mod node_fills_1m_aggregate;
 pub mod node_fills_by_block;
 
 use crate::adapter::error::AdapterError;
@@ -14,6 +15,18 @@ use crate::error::{AnySignalError, AnySignalResult};
 /// or a date+coin pair).  Must be `Display` so it can appear in log output.
 pub trait PartitionKey: std::fmt::Display + Send + Sync {}
 
+/// Timing and row-count summary returned by [`PartitionedSource::ingest_partition`].
+/// [`run_backfill`] uses this to emit a single structured log line per partition
+/// so individual implementations do not need their own `tracing::info!` calls.
+pub struct PartitionStats {
+    /// Number of rows written to QuestDB.
+    pub rows: u64,
+    /// Wall-clock time spent fetching / parsing upstream data (ms).
+    pub fetch_ms: u128,
+    /// Wall-clock time spent writing to QuestDB (ms).
+    pub insert_ms: u128,
+}
+
 /// A data source that can check for and ingest one partition at a time.
 ///
 /// `partition_exists` only needs the DB handle; the adapter state (S3 client
@@ -27,8 +40,14 @@ pub trait PartitionedSource: Send + Sync {
     async fn partition_exists(db: &QuestDbClient, key: &Self::Key) -> AnySignalResult<bool>;
 
     /// Fetch the partition from its upstream source and write it to QuestDB.
-    /// Returns the number of rows inserted.
-    async fn ingest_partition(&self, db: &QuestDbClient, key: &Self::Key) -> AnySignalResult<u64>;
+    /// Returns [`PartitionStats`] with row count and fetch/insert timings.
+    /// Implementations should **not** emit their own log lines — [`run_backfill`]
+    /// handles that using the returned stats.
+    async fn ingest_partition(
+        &self,
+        db: &QuestDbClient,
+        key: &Self::Key,
+    ) -> AnySignalResult<PartitionStats>;
 }
 
 // ---------------------------------------------------------------------------
@@ -92,8 +111,15 @@ where
         }
 
         match source.ingest_partition(db, &key).await {
-            Ok(n) => {
-                stats.rows_inserted += n;
+            Ok(ps) => {
+                tracing::info!(
+                    key = %label,
+                    fetch_ms = ps.fetch_ms,
+                    insert_ms = ps.insert_ms,
+                    rows = ps.rows,
+                    "partition ingested"
+                );
+                stats.rows_inserted += ps.rows;
                 stats.keys_ok.push(label);
             }
             Err(AnySignalError::Adapter(AdapterError::Unauthorized(msg))) => {

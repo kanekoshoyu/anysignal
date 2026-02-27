@@ -1,5 +1,6 @@
 use crate::backfill::asset_ctxs::AssetCtxsSource;
 use crate::backfill::l2_orderbook::{L2PartitionKey, L2SnapshotSource};
+use crate::backfill::node_fills_1m_aggregate::{NodeFills1mAggregateHourKey, NodeFills1mAggregateSource};
 use crate::backfill::node_fills_by_block::{NodeFillsHourKey, NodeFillsSource};
 use crate::backfill::run_backfill;
 use crate::config::Config;
@@ -61,6 +62,16 @@ enum BackfillSource {
     ///
     /// **Data available from:** `2025-07-27`
     HyperliquidNodeFills,
+
+    /// Hyperliquid node fills aggregated into 1-minute buckets.
+    ///
+    /// Fetches the same hourly files as `HyperliquidNodeFills` but aggregates
+    /// each fill into `(coin, category, buy_side, minute)` buckets before
+    /// writing to `hyperliquid_fill_1m_aggregate`.  The minute bucket is
+    /// **left-closed**: `12:00:00` covers `[12:00, 12:01)`.
+    ///
+    /// **Data available from:** `2025-07-27`
+    HyperliquidNodeFills1mAggregate,
 }
 
 /// Per-run summary returned by `GET /backfill`.
@@ -120,19 +131,19 @@ impl Endpoint {
     /// `from` and `to` accept either a full datetime (`2024-01-01T00:00:00`) or a
     /// date-only value (`2024-01-01`), which is treated as midnight (`T00:00:00`).
     ///
-    /// - `HyperliquidAssetCtxs` — steps daily using only the date part.
-    /// - `HyperliquidL2Orderbook` — steps hourly from `from` to `to`;
-    ///   requires `coins` (comma-separated tickers, e.g. `BTC,ETH`).
-    /// - `HyperliquidNodeFills` — steps hour-by-hour; inserts into `hyperliquid_fill`.
-    ///
     /// By default, periods already present in QuestDB are skipped.
     /// Set `force=true` to bypass that check and always fetch+insert.
     ///
-    /// | `source`                  | Steps  | Available from | Extra params       |
-    /// |---------------------------|--------|----------------|--------------------|
-    /// | `HyperliquidAssetCtxs`    | daily  | 2023-05-20     | —                  |
-    /// | `HyperliquidL2Orderbook`  | hourly | 2023-04-15     | `coins` (required) |
-    /// | `HyperliquidNodeFills`    | hourly | 2025-07-27     | —                  |
+    /// | `source`                          | Steps  | Table                            | Available from | Extra params       |
+    /// |-----------------------------------|--------|----------------------------------|----------------|--------------------|
+    /// | `HyperliquidAssetCtxs`            | daily  | `market_data`                    | 2023-05-20     | —                  |
+    /// | `HyperliquidL2Orderbook`          | hourly | `l2_orderbook`                   | 2023-04-15     | `coins` (required) |
+    /// | `HyperliquidNodeFills`            | hourly | `hyperliquid_fill`               | 2025-07-27     | —                  |
+    /// | `HyperliquidNodeFills1mAggregate` | hourly | `hyperliquid_fill_1m_aggregate`  | 2025-07-27     | —                  |
+    ///
+    /// **`HyperliquidNodeFills1mAggregate`** aggregates raw fills into
+    /// `(coin, category, buy_side, minute)` buckets before writing.
+    /// The minute bucket is left-closed: `12:00:00` covers `[12:00, 12:01)`.
     #[oai(path = "/backfill", method = "get")]
     async fn backfill(
         &self,
@@ -264,6 +275,34 @@ impl Endpoint {
                     let mut current = from.date().and_hms_opt(from.hour(), 0, 0).unwrap_or(from);
                     while current <= to {
                         keys.push(NodeFillsHourKey { hour: current });
+                        current += chrono::Duration::hours(1);
+                    }
+                    keys
+                };
+
+                match run_backfill(&source, &db, keys, force).await {
+                    Ok(stats) => BackfillApiResponse::Ok(Json(stats.into())),
+                    Err(msg) => BackfillApiResponse::InternalError(PlainText(msg)),
+                }
+            }
+
+            BackfillSource::HyperliquidNodeFills1mAggregate => {
+                let source = match NodeFills1mAggregateSource::new().await {
+                    Ok(s) => s,
+                    Err(e) => {
+                        return BackfillApiResponse::InternalError(PlainText(format!(
+                            "Failed to initialise S3 client: {e}"
+                        )))
+                    }
+                };
+
+                // Build hour-by-hour key iterator — one partition = one hour of raw fills
+                // which expands to up to 60 minute-buckets per (coin, category, buy_side).
+                let keys = {
+                    let mut keys = Vec::new();
+                    let mut current = from.date().and_hms_opt(from.hour(), 0, 0).unwrap_or(from);
+                    while current <= to {
+                        keys.push(NodeFills1mAggregateHourKey { hour: current });
                         current += chrono::Duration::hours(1);
                     }
                     keys

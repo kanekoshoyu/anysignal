@@ -325,6 +325,76 @@
         }
       ]
     },
+    "hyperliquid_fill_1m_aggregate": {
+      "columns": [
+        {
+          "column": "ts",
+          "type": "TIMESTAMP",
+          "designated": true,
+          "upsertKey": false,
+          "indexed": false,
+          "indexBlockCapacity": 0,
+          "symbolCached": false,
+          "symbolCapacity": 0,
+          "symbolTableSize": 0
+        },
+        {
+          "column": "coin",
+          "type": "SYMBOL",
+          "designated": false,
+          "upsertKey": false,
+          "indexed": false,
+          "indexBlockCapacity": 256,
+          "symbolCached": true,
+          "symbolCapacity": 256,
+          "symbolTableSize": 0
+        },
+        {
+          "column": "category",
+          "type": "SYMBOL",
+          "designated": false,
+          "upsertKey": false,
+          "indexed": false,
+          "indexBlockCapacity": 256,
+          "symbolCached": true,
+          "symbolCapacity": 256,
+          "symbolTableSize": 0
+        },
+        {
+          "column": "buy_side",
+          "type": "BOOLEAN",
+          "designated": false,
+          "upsertKey": false,
+          "indexed": false,
+          "indexBlockCapacity": 0,
+          "symbolCached": false,
+          "symbolCapacity": 0,
+          "symbolTableSize": 0
+        },
+        {
+          "column": "quantity",
+          "type": "DOUBLE",
+          "designated": false,
+          "upsertKey": false,
+          "indexed": false,
+          "indexBlockCapacity": 0,
+          "symbolCached": false,
+          "symbolCapacity": 0,
+          "symbolTableSize": 0
+        },
+        {
+          "column": "trade_count",
+          "type": "LONG",
+          "designated": false,
+          "upsertKey": false,
+          "indexed": false,
+          "indexBlockCapacity": 0,
+          "symbolCached": false,
+          "symbolCapacity": 0,
+          "symbolTableSize": 0
+        }
+      ]
+    },
     "market_event": {
       "columns": [
         {

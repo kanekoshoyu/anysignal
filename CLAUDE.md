@@ -11,44 +11,79 @@ Rust async service that backfills and streams trading signals/market data into *
 - **`src/api/rest/endpoint.rs`** — Poem/OpenAPI REST; `GET /backfill` is the main entry point
 
 ## Adding a new backfill source — checklist
-1. Create `src/adapter/hyperliquid_s3/<name>.rs`; `new(config: &Config)` pattern (see `asset_ctxs.rs` / `market_data.rs`)
-2. Add dedup-check to `database/mod.rs`: `<name>_exists(config, …) -> AnySignalResult<bool>`
-3. Add writer to `database/mod.rs`: `insert_<name>(sender, rows) -> QuestResult<usize>` with 64 MiB flush threshold
-4. Add `BackfillSource` variant + match arm in `endpoint.rs` (datetime-based iteration, dedup + `force` flag)
-5. Unit tests (no network) + `#[ignore]` integration test
+1. Create `src/adapter/hyperliquid_s3/<name>.rs`; `new()` async constructor (see `asset_ctxs.rs` / `node_fills_by_block.rs`)
+2. Add row type + writer to `database/mod.rs`: `insert_<name>(sender, rows) -> QuestResult<usize>` with 64 MiB flush threshold
+3. Create `src/backfill/<name>.rs`; implement `PartitionKey` + `PartitionedSource`
+   - `partition_exists` — SQL count check; return `Ok(false)` on any DB error
+   - `ingest_partition` — fetch → transform → insert; return `PartitionStats { rows, fetch_ms, insert_ms }`
+   - Do **not** emit `tracing::info!` — `run_backfill` logs per-partition timing from `PartitionStats`
+4. Register `pub mod <name>` in `src/backfill/mod.rs`
+5. Add `BackfillSource` variant + match arm in `endpoint.rs` (hour-by-hour or day-by-day key iterator)
+6. Unit tests (no network) + `#[ignore]` integration test
 
 ## Hyperliquid S3 — critical details
+
+### `hyperliquid-archive` bucket (us-east-1, requester-pays)
 | Dataset | Key pattern | LZ4 format | Date fmt | Hour fmt |
 |---|---|---|---|---|
-| asset_ctxs | `asset_ctxs/{YYYYMMDD}.csv.lz4` | **frame** (`lz4::Decoder`) | `YYYYMMDD` | — |
-| L2 orderbook | `market_data/{YYYYMMDD}/{H}/l2Book/{coin}.lz4` | **frame** (`lz4::Decoder`) | `YYYYMMDD` | unpadded `0`–`23` |
+| asset_ctxs | `asset_ctxs/{YYYYMMDD}.csv.lz4` | frame (`lz4::Decoder`) | `YYYYMMDD` | — |
+| L2 orderbook | `market_data/{YYYYMMDD}/{H}/l2Book/{coin}.lz4` | frame (`lz4::Decoder`) | `YYYYMMDD` | unpadded `0`–`23` |
 
-- Bucket: **`hyperliquid-archive`**, region: **`us-east-1`**
-- Bucket is **requester-pays** — always pass `.request_payer(RequestPayer::Requester)`
+- Always pass `.request_payer(RequestPayer::Requester)`
 - L2 wire format (NDJSON per line): `{"time":"…","ver_num":1,"raw":{"channel":"l2Book","data":{"coin":"…","time":<ms>,"levels":[[bids…],[asks…]]}}}`
 - `asset_ctxs` CSV: snake_case headers; `time` is `chrono::DateTime<Utc>` (ISO 8601)
 
+### `hl-mainnet-node-data` bucket (ap-northeast-1, requester-pays)
+| Dataset | Key pattern | LZ4 format | Hour fmt |
+|---|---|---|---|
+| node fills by block | `node_fills_by_block/hourly/{YYYYMMDD}/{H}.lz4` | frame (`lz4::Decoder`) | unpadded `0`–`23` |
+
+- Wire format: NDJSON, one line per block — `{"events":[["<wallet>", {fill…}], …]}`
+- `fill.side`: `"B"` → `"buy"`, `"A"` → `"sell"`; `fill.dir` stored as `category`
+- **Hour boundary spillover:** S3 files are keyed by block *processing* time, not fill timestamp.
+  When aggregating by minute, always fetch H-1 and H+1 and filter to `[hour_start_ms, hour_end_ms)`.
+
 ## Backfill API design
 - `GET /backfill?from=2024-01-01T00:00:00&to=2024-01-07T23:00:00&source=…&force=false`
-- `from`/`to` are **`NaiveDateTime`** (hour precision)
-- `HyperliquidAssetCtxs` — steps **day-by-day** using only the date part of `from`/`to`
-- `HyperliquidL2Orderbook` — steps **hour-by-hour**; requires `coins=BTC,ETH` query param
-- Both sources check QuestDB before fetching (dedup); `force=true` bypasses the check
+- `from`/`to` are **`NaiveDateTime`**; date-only strings treated as `T00:00:00`
+- All sources check QuestDB before fetching (dedup); `force=true` bypasses the check
+
+| Source | Steps | Table | Available from |
+|---|---|---|---|
+| `HyperliquidAssetCtxs` | daily | `market_data` | 2023-05-20 |
+| `HyperliquidL2Orderbook` | hourly | `l2_orderbook` | 2023-04-15 |
+| `HyperliquidNodeFills` | hourly | `hyperliquid_fill` | 2025-07-27 |
+| `HyperliquidNodeFills1mAggregate` | hourly | `hyperliquid_fill_1m_aggregate` | 2025-07-27 |
 
 ## QuestDB patterns
 - Timestamps in **microseconds** (`ms * 1_000`, `chrono::DateTime::timestamp_micros()`)
 - `SYMBOL` → `.symbol()`, `DOUBLE` → `.column_f64()`, `LONG` → `.column_i64()`
 - Flush buffer every **64 MiB** (`BUFFER_FLUSH_THRESHOLD`) — daily data can exceed QuestDB's 100 MiB cap
 
-## l2_snapshot table schema
+## Key table schemas
+
 ```sql
-CREATE TABLE l2_snapshot (
-    ts       TIMESTAMP,
-    ticker   SYMBOL,   -- coin ticker
-    side     SYMBOL,   -- 'bid' or 'ask'
-    level    INT,      -- 0-based price level index
-    price    DOUBLE,
-    quantity DOUBLE
+CREATE TABLE hyperliquid_fill (
+    ts             TIMESTAMP,
+    coin           SYMBOL,
+    wallet         SYMBOL,
+    side           SYMBOL,   -- 'buy' | 'sell'
+    category       SYMBOL,   -- 'Buy' | 'Sell' | 'Open Long' | 'Close Long' | …
+    source         SYMBOL,   -- 'HYPERLIQUID_NODE'
+    is_taker       BOOLEAN,
+    price          DOUBLE,
+    quantity       DOUBLE,
+    position_before DOUBLE,
+    realized_pnl   DOUBLE
+) timestamp(ts) PARTITION BY DAY;
+
+CREATE TABLE hyperliquid_fill_1m_aggregate (
+    ts          TIMESTAMP,  -- left-closed minute bucket: 12:00 covers [12:00, 12:01)
+    coin        SYMBOL,
+    category    SYMBOL,
+    buy_side    BOOLEAN,
+    quantity    DOUBLE,
+    trade_count LONG
 ) timestamp(ts) PARTITION BY DAY;
 ```
 

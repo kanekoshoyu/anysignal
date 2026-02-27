@@ -1,6 +1,18 @@
 # [signal](./README.md) changelog
 > [TODO](./src/README.md)
 
+## [0.8.0]
+### Added
+- `HyperliquidNodeFills1mAggregate` backfill source — aggregates raw node fills into 1-minute buckets
+  per `(coin, category, buy_side)` and writes to `hyperliquid_fill_1m_aggregate`
+- Neighbour-hour lookahead in 1m aggregate ingest: peeks at H-1 and H+1 S3 files to capture fills
+  whose block was committed across an hour boundary; all fills are filtered to `[hour_start, hour_end)`
+  to prevent double-counting
+- `PartitionStats { rows, fetch_ms, insert_ms }` returned by `PartitionedSource::ingest_partition`;
+  `run_backfill` now emits a single structured log line per partition — implementations no longer
+  write their own `tracing::info!`
+- `hyperliquid_fill_1m_aggregate` table schema added to `schema_questdb.json` and `src/database/README.md`
+
 ## [0.7.0]
 ### Changed
 - `hyperliquid_fill`: added `side` column (`"buy"` / `"sell"`, normalised from raw `"B"` / `"A"`)

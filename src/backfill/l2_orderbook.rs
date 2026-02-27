@@ -1,4 +1,4 @@
-use super::{PartitionKey, PartitionedSource};
+use super::{PartitionKey, PartitionedSource, PartitionStats};
 use crate::adapter::hyperliquid_s3::market_data::MarketData;
 use crate::database::{insert_l2_snapshots, QuestDbClient};
 use crate::error::AnySignalResult;
@@ -61,7 +61,7 @@ impl PartitionedSource for L2SnapshotSource {
         &self,
         db: &QuestDbClient,
         key: &L2PartitionKey,
-    ) -> AnySignalResult<u64> {
+    ) -> AnySignalResult<PartitionStats> {
         let date = key.hour.date();
         let hour = key.hour.hour() as u8;
 
@@ -70,10 +70,9 @@ impl PartitionedSource for L2SnapshotSource {
         let fetch_ms = t_fetch.elapsed().as_millis();
 
         let t_insert = std::time::Instant::now();
-        let n = db.with_sender(|s| insert_l2_snapshots(s, &snapshots))?;
+        let rows = db.with_sender(|s| insert_l2_snapshots(s, &snapshots))? as u64;
         let insert_ms = t_insert.elapsed().as_millis();
 
-        tracing::info!(key = %key, fetch_ms, insert_ms, rows = n, "partition ingested");
-        Ok(n as u64)
+        Ok(PartitionStats { rows, fetch_ms, insert_ms })
     }
 }

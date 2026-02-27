@@ -1,4 +1,4 @@
-use super::{PartitionKey, PartitionedSource};
+use super::{PartitionKey, PartitionedSource, PartitionStats};
 use crate::adapter::hyperliquid_s3::asset_ctxs::AssetCtxs;
 use crate::database::{insert_asset_ctxs, QuestDbClient};
 use crate::error::AnySignalResult;
@@ -37,18 +37,21 @@ impl PartitionedSource for AssetCtxsSource {
         Ok(db.count(&sql).await? > 0)
     }
 
-    async fn ingest_partition(&self, db: &QuestDbClient, key: &NaiveDate) -> AnySignalResult<u64> {
+    async fn ingest_partition(
+        &self,
+        db: &QuestDbClient,
+        key: &NaiveDate,
+    ) -> AnySignalResult<PartitionStats> {
         let t_fetch = std::time::Instant::now();
         let csv_text = self.fetcher.fetch_and_decompress(*key).await?;
         let rows = AssetCtxs::parse_csv(&csv_text)?;
         let fetch_ms = t_fetch.elapsed().as_millis();
 
         let t_insert = std::time::Instant::now();
-        let n = rows.len() as u64;
+        let rows_n = rows.len() as u64;
         db.with_sender(|s| insert_asset_ctxs(s, &rows))?;
         let insert_ms = t_insert.elapsed().as_millis();
 
-        tracing::info!(key = %key, fetch_ms, insert_ms, rows = n, "partition ingested");
-        Ok(n)
+        Ok(PartitionStats { rows: rows_n, fetch_ms, insert_ms })
     }
 }

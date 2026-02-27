@@ -9,10 +9,12 @@ This project first focuses on
 ## backfill endpoint
 `POST /backfill` — fetch historic data from S3 into QuestDB for a date range.
 
-| `source` | Description | Extra fields |
-|---|---|---|
-| `HyperliquidAssetCtxs` | Daily asset-context snapshots (`market_data` table) | — |
-| `HyperliquidL2Orderbook` | Hourly L2 orderbook snapshots (`l2_snapshot` table) | `coins` (required), `hours` (0–23, default all) |
+| `source` | Steps | Description | Extra fields |
+|---|---|---|---|
+| `HyperliquidAssetCtxs` | daily | Daily asset-context snapshots (`market_data` table) | — |
+| `HyperliquidL2Orderbook` | hourly | Hourly L2 orderbook snapshots (`l2_snapshot` table) | `coins` (required) |
+| `HyperliquidNodeFills` | hourly | Raw node fills per block (`hyperliquid_fill` table) | — |
+| `HyperliquidNodeFills1mAggregate` | hourly | Node fills aggregated into 1-minute buckets (`hyperliquid_fill_1m_aggregate` table). Minute bucket is left-closed: `12:00:00` covers `[12:00, 12:01)`. | — |
 
 ```json
 // Example — backfill BTC & ETH orderbook for one week, peak hours only

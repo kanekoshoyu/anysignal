@@ -74,6 +74,33 @@ Categorical/text signal outputs.
 
 ---
 
+---
+
+### `hyperliquid_fill_1m_aggregate`
+
+Node fills aggregated into 1-minute buckets per `(coin, category, buy_side)`.  Written by the `HyperliquidNodeFills1mAggregate` backfill source.
+
+The minute bucket is **left-closed**: `ts = 12:00:00` covers the interval `[12:00, 12:01)`.
+
+| Column        | Type      | Notes                                                     |
+|---------------|-----------|-----------------------------------------------------------|
+| `ts`          | TIMESTAMP | Left boundary of the minute bucket (microseconds)        |
+| `coin`        | SYMBOL    | Asset ticker (e.g. `BTC`, `ETH`)                         |
+| `category`    | SYMBOL    | Fill direction (`Buy`, `Sell`, `Open Long`, `Close Long`, …) |
+| `buy_side`    | BOOLEAN   | `true` when the fill side is buy                         |
+| `quantity`    | DOUBLE    | Sum of fill sizes within the bucket                      |
+| `trade_count` | LONG      | Number of individual fills in the bucket                 |
+
+**Example query — BTC buy volume per minute:**
+```sql
+SELECT ts, sum(quantity) AS buy_volume
+FROM hyperliquid_fill_1m_aggregate
+WHERE coin = 'BTC' AND buy_side = true
+ORDER BY ts;
+```
+
+---
+
 ## Hyperliquid S3 ingestion
 
 Historic data is fetched from the public Hyperliquid S3 bucket (`hyperliquid-archive`) via `src/adapter/hyperliquid_s3/`.

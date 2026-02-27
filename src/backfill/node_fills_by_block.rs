@@ -1,4 +1,4 @@
-use super::{PartitionKey, PartitionedSource};
+use super::{PartitionKey, PartitionedSource, PartitionStats};
 use crate::adapter::hyperliquid_s3::node_fills_by_block::NodeFillsByBlock;
 use crate::database::{insert_hyperliquid_fills, QuestDbClient};
 use crate::error::AnySignalResult;
@@ -60,7 +60,7 @@ impl PartitionedSource for NodeFillsSource {
         &self,
         db: &QuestDbClient,
         key: &NodeFillsHourKey,
-    ) -> AnySignalResult<u64> {
+    ) -> AnySignalResult<PartitionStats> {
         let date = key.hour.date();
         let hour = key.hour.hour() as u8;
 
@@ -73,14 +73,13 @@ impl PartitionedSource for NodeFillsSource {
         fills.sort_unstable_by_key(|f| f.time_ms);
 
         let t_insert = std::time::Instant::now();
-        // Use block_in_place so the blocking mutex + synchronous HTTP flush                                                                                                 
-        // don't starve the Tokio thread pool.     
-        let n = tokio::task::block_in_place(|| {
+        // Use block_in_place so the blocking mutex + synchronous HTTP flush
+        // don't starve the Tokio thread pool.
+        let rows = tokio::task::block_in_place(|| {
             db.with_sender(|s| insert_hyperliquid_fills(s, &fills))
-        })?;
+        })? as u64;
         let insert_ms = t_insert.elapsed().as_millis();
 
-        tracing::info!(key = %key, fetch_ms, insert_ms, rows = n, "partition ingested");
-        Ok(n as u64)
+        Ok(PartitionStats { rows, fetch_ms, insert_ms })
     }
 }

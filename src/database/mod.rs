@@ -352,6 +352,30 @@ pub fn insert_l2_snapshots(sender: &mut Sender, snapshots: &[L2Snapshot]) -> Que
 }
 
 // ---------------------------------------------------------------------------
+// Hyperliquid 1-minute aggregate row
+// ---------------------------------------------------------------------------
+
+/// One row in `hyperliquid_fill_1m_aggregate`.
+///
+/// The timestamp (`minute_ms`) is the **left-closed** boundary of the
+/// `[minute, minute+1)` bucket, stored as Unix milliseconds.
+#[derive(Debug)]
+pub struct Fill1mAggregate {
+    /// Start of the minute bucket in Unix milliseconds
+    /// (e.g. `12:00:00.000` for the `[12:00, 12:01)` bucket).
+    pub minute_ms: i64,
+    pub coin: String,
+    /// Trade direction from the raw fill (e.g. `"Buy"`, `"Sell"`, `"Open Long"`).
+    pub category: String,
+    /// `true` when the fill side is `"buy"`.
+    pub buy_side: bool,
+    /// Sum of fill quantities within this bucket.
+    pub quantity: f64,
+    /// Number of individual fills in this bucket.
+    pub trade_count: i64,
+}
+
+// ---------------------------------------------------------------------------
 // Hyperliquid node fills ingestion
 // ---------------------------------------------------------------------------
 
@@ -392,6 +416,51 @@ pub fn insert_hyperliquid_fills(sender: &mut Sender, fills: &[ParsedFill]) -> Qu
     }
 
     Ok(rows)
+}
+
+// ---------------------------------------------------------------------------
+// Hyperliquid 1-minute aggregate ingestion
+// ---------------------------------------------------------------------------
+
+/// Batch-insert a slice of [`Fill1mAggregate`]s into the
+/// `hyperliquid_fill_1m_aggregate` table.
+///
+/// Each row's timestamp is the **left-closed** minute bucket boundary
+/// (`minute_ms * 1_000` µs).
+///
+/// The buffer is flushed automatically at [`BUFFER_FLUSH_THRESHOLD`].
+/// Returns the total number of rows written.
+pub fn insert_hyperliquid_fill_1m_aggregate(
+    sender: &mut Sender,
+    rows: &[Fill1mAggregate],
+) -> QuestResult<usize> {
+    let mut buffer = Buffer::new();
+    let mut count: usize = 0;
+
+    for row in rows {
+        let ts_us = TimestampMicros::new(row.minute_ms * 1_000); // ms → µs
+
+        buffer
+            .table("hyperliquid_fill_1m_aggregate")?
+            .symbol("coin", &row.coin)?
+            .symbol("category", &row.category)?
+            .column_bool("buy_side", row.buy_side)?
+            .column_f64("quantity", row.quantity)?
+            .column_i64("trade_count", row.trade_count)?
+            .at(ts_us)?;
+
+        count += 1;
+
+        if buffer.len() >= BUFFER_FLUSH_THRESHOLD {
+            sender.flush(&mut buffer)?;
+        }
+    }
+
+    if !buffer.is_empty() {
+        sender.flush(&mut buffer)?;
+    }
+
+    Ok(count)
 }
 
 #[cfg(test)]
