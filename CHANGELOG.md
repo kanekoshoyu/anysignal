@@ -1,6 +1,10 @@
 # [signal](./README.md) changelog
 > [TODO](./src/README.md)
 
+## [0.9.1]
+### Changed
+- `/backfill/status`: added `started_at` (RFC 3339 UTC, e.g. `"2026-02-28T14:03:22Z"`) to each job entry
+
 ## [0.8.0]
 ### Added
 - `HyperliquidNodeFills1mAggregate` backfill source — aggregates raw node fills into 1-minute buckets

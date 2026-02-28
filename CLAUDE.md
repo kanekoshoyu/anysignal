@@ -62,10 +62,9 @@ Rust async service that backfills and streams trading signals/market data into *
 |---|---|
 | `id` | Unique job ID |
 | `source` | Source name (e.g. `HyperliquidNodeFills`) |
-| `current_key` | Partition key currently being processed |
-| `keys_done` | Partitions completed so far |
-| `keys_total` | Total partitions in the job |
-| `elapsed_ms` | Milliseconds since the job started |
+| `ongoing` | Partition keys currently being processed concurrently |
+| `started_at` | RFC 3339 UTC timestamp of when the backfill request was received |
+| `elapsed_ms` | Wall-clock milliseconds since the backfill request was received |
 
 ## QuestDB patterns
 - Timestamps in **microseconds** (`ms * 1_000`, `chrono::DateTime::timestamp_micros()`)

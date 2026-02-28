@@ -104,13 +104,11 @@ struct BackfillStatusEntry {
     id: u64,
     /// Source name (e.g. `"HyperliquidNodeFills"`).
     source: String,
-    /// Partition key currently being processed (`null` if not yet started).
-    current_key: Option<String>,
-    /// Number of partitions completed so far.
-    keys_done: u64,
-    /// Total partitions in this job.
-    keys_total: u64,
-    /// Milliseconds elapsed since the job started.
+    /// Partition keys currently being processed concurrently.
+    ongoing: Vec<String>,
+    /// RFC 3339 UTC timestamp of when the backfill request was received.
+    started_at: String,
+    /// Wall-clock milliseconds since the backfill request was received.
     elapsed_ms: u64,
 }
 
@@ -159,9 +157,8 @@ impl Endpoint {
             .map(|s| BackfillStatusEntry {
                 id: s.id,
                 source: s.source,
-                current_key: s.current_key,
-                keys_done: s.keys_done as u64,
-                keys_total: s.keys_total as u64,
+                ongoing: s.ongoing,
+                started_at: s.started_at,
                 elapsed_ms: s.elapsed_ms,
             })
             .collect();
