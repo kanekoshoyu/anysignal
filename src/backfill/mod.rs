@@ -81,6 +81,10 @@ pub struct BackfillStats {
 /// unregistered when the function returns (via RAII guard), so the tracker is
 /// always empty when no backfill is running.
 ///
+/// All keys that need ingestion are claimed in the tracker before Phase 2 starts,
+/// so `/backfill/status` shows the full remaining work queue from the outset.
+/// Keys are released from the tracker as each one completes.
+///
 /// Error classification per key:
 /// - `Unauthorized`  → fatal; remaining keys are skipped after in-flight work drains
 /// - `NotFound`      → skipped (data absent from archive)
@@ -111,6 +115,64 @@ where
     let rows_total   = Arc::new(AtomicU64::new(0));
     let fatal_msg    = Arc::new(Mutex::new(None::<String>));
 
+    // -----------------------------------------------------------------------
+    // Phase 1: determine which keys actually need ingestion.
+    //
+    // Existence checks run concurrently so we know the full pending set before
+    // any ingestion begins.  Results are encoded as:
+    //   Ok((Some(key), label)) → missing, queue for ingestion
+    //   Ok((None,      label)) → already in QuestDB → keys_skipped
+    //   Err(msg)               → existence check failed → keys_err
+    // -----------------------------------------------------------------------
+    let check_results: Vec<Result<(Option<S::Key>, String), String>> = if force {
+        keys.into_iter()
+            .map(|k| { let l = k.to_string(); Ok((Some(k), l)) })
+            .collect()
+    } else {
+        futures::stream::iter(keys)
+            .map(|key| async move {
+                let label = key.to_string();
+                match S::partition_exists(db, &key).await {
+                    Ok(true)  => Ok((None, label)),
+                    Ok(false) => Ok((Some(key), label)),
+                    Err(e)    => Err(format!("{label}: existence check failed: {e}")),
+                }
+            })
+            .buffer_unordered(BACKFILL_CONCURRENCY)
+            .collect::<Vec<_>>()
+            .await
+    };
+
+    // Partition results; claim all pending keys in the tracker upfront so that
+    // /backfill/status reflects the full remaining work queue immediately.
+    let mut pending_keys: Vec<(S::Key, String)> = Vec::new();
+    {
+        let mut sk = keys_skipped.lock().unwrap_or_else(|p| p.into_inner());
+        let mut ke = keys_err.lock().unwrap_or_else(|p| p.into_inner());
+        for result in check_results {
+            match result {
+                Ok((None, label)) => sk.push(label), // already exists in QuestDB
+                Ok((Some(key), label)) => {
+                    // Dedup: if another concurrent job already owns this key, skip it.
+                    let claimed = match (tracker, guard_id) {
+                        (Some((t, sn)), Some(gid)) => t.try_claim_key(gid, sn, &label),
+                        _ => true,
+                    };
+                    if claimed {
+                        pending_keys.push((key, label));
+                    } else {
+                        sk.push(format!("{label}: already being indexed"));
+                    }
+                }
+                Err(msg) => ke.push(msg),
+            }
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Phase 2: ingest all pending keys concurrently.
+    // Existence check is already done; just ingest and release on completion.
+    // -----------------------------------------------------------------------
     {
         let keys_ok      = Arc::clone(&keys_ok);
         let keys_err     = Arc::clone(&keys_err);
@@ -118,9 +180,8 @@ where
         let rows_total   = Arc::clone(&rows_total);
         let fatal_msg    = Arc::clone(&fatal_msg);
 
-        futures::stream::iter(keys)
-            .map(|key| {
-                // Clone Arcs once per key before entering the async block.
+        futures::stream::iter(pending_keys)
+            .map(|(key, label)| {
                 let keys_ok      = Arc::clone(&keys_ok);
                 let keys_err     = Arc::clone(&keys_err);
                 let keys_skipped = Arc::clone(&keys_skipped);
@@ -128,58 +189,18 @@ where
                 let fatal_msg    = Arc::clone(&fatal_msg);
 
                 async move {
-                    // Skip if a fatal credential error was already recorded.
-                    {
-                        let f = fatal_msg.lock().unwrap_or_else(|p| p.into_inner());
-                        if f.is_some() {
-                            return;
-                        }
-                    }
-
-                    let label = key.to_string();
-
-                    // Dedup: check whether another concurrent job is already
-                    // processing this key for the same source.
-                    let claimed = match (tracker, guard_id) {
-                        (Some((t, sn)), Some(gid)) => t.try_claim_key(gid, sn, &label),
-                        _ => true,
-                    };
-
-                    if !claimed {
-                        keys_skipped
-                            .lock()
-                            .unwrap_or_else(|p| p.into_inner())
-                            .push(format!("{label}: already being indexed"));
-                        return;
-                    }
-
-                    // Release the claimed key from the ongoing set on exit.
                     let release = || {
                         if let (Some((t, _)), Some(gid)) = (tracker, guard_id) {
                             t.release_key(gid, &label);
                         }
                     };
 
-                    // Existence check.
-                    if !force {
-                        match S::partition_exists(db, &key).await {
-                            Ok(true) => {
-                                keys_skipped
-                                    .lock()
-                                    .unwrap_or_else(|p| p.into_inner())
-                                    .push(label.clone());
-                                release();
-                                return;
-                            }
-                            Ok(false) => {}
-                            Err(e) => {
-                                keys_err
-                                    .lock()
-                                    .unwrap_or_else(|p| p.into_inner())
-                                    .push(format!("{label}: existence check failed: {e}"));
-                                release();
-                                return;
-                            }
+                    // Skip if a fatal credential error was already recorded.
+                    {
+                        let f = fatal_msg.lock().unwrap_or_else(|p| p.into_inner());
+                        if f.is_some() {
+                            release();
+                            return;
                         }
                     }
 

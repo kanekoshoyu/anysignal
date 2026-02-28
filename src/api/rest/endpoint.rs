@@ -104,7 +104,7 @@ struct BackfillStatusEntry {
     id: u64,
     /// Source name (e.g. `"HyperliquidNodeFills"`).
     source: String,
-    /// Partition keys currently being processed concurrently.
+    /// All partition keys remaining to be processed (registered upfront, removed as each completes).
     ongoing: Vec<String>,
     /// RFC 3339 UTC timestamp of when the backfill request was received.
     started_at: String,

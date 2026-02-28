@@ -26,7 +26,7 @@ pub struct BackfillTracker(Arc<Mutex<Inner>>);
 pub struct BackfillSnapshot {
     pub id: u64,
     pub source: String,
-    /// Partition keys currently being processed concurrently.
+    /// All partition keys remaining to be processed (claimed but not yet released).
     pub ongoing: Vec<String>,
     pub started_at: String,
     pub elapsed_ms: u64,
