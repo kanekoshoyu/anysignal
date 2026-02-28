@@ -2,10 +2,12 @@ pub mod asset_ctxs;
 pub mod l2_orderbook;
 pub mod node_fills_1m_aggregate;
 pub mod node_fills_by_block;
+pub mod tracker;
 
 use crate::adapter::error::AdapterError;
 use crate::database::QuestDbClient;
 use crate::error::{AnySignalError, AnySignalResult};
+use tracker::BackfillTracker;
 
 // ---------------------------------------------------------------------------
 // Traits
@@ -69,6 +71,10 @@ pub struct BackfillStats {
 /// fetches would fail anyway).  Otherwise accumulates per-key outcomes into
 /// [`BackfillStats`].
 ///
+/// When `tracker` is provided the job is registered on entry and automatically
+/// unregistered when the function returns (via RAII guard), so the tracker is
+/// always empty when no backfill is running.
+///
 /// Error classification per key:
 /// - `Unauthorized`  → fatal, return `Err` immediately
 /// - `NotFound`      → skipped (data absent from archive)
@@ -76,13 +82,18 @@ pub struct BackfillStats {
 pub async fn run_backfill<S>(
     source: &S,
     db: &QuestDbClient,
-    keys: impl IntoIterator<Item = S::Key>,
+    keys: Vec<S::Key>,
     force: bool,
+    tracker: Option<(&BackfillTracker, &str)>,
 ) -> Result<BackfillStats, String>
 where
     S: PartitionedSource,
 {
     let started = std::time::Instant::now();
+
+    // Register with the tracker; guard unregisters on any return path.
+    let _guard = tracker.map(|(t, name)| t.register(name, keys.len()));
+
     let mut stats = BackfillStats {
         keys_ok: Vec::new(),
         keys_err: Vec::new(),
@@ -91,8 +102,17 @@ where
         elapsed_ms: 0,
     };
 
-    for key in keys {
+    for (idx, key) in keys.into_iter().enumerate() {
         let label = key.to_string();
+
+        if let (Some((t, source_name)), Some(ref g)) = (tracker, &_guard) {
+            if !t.try_claim_key(g.id, source_name, &label, idx) {
+                stats
+                    .keys_skipped
+                    .push(format!("{label}: already being indexed"));
+                continue;
+            }
+        }
 
         if !force {
             match S::partition_exists(db, &key).await {

@@ -45,8 +45,10 @@ Rust async service that backfills and streams trading signals/market data into *
 
 ## Backfill API design
 - `GET /backfill?from=2024-01-01T00:00:00&to=2024-01-07T23:00:00&source=…&force=false`
+- `GET /backfill/status` — list all active backfill jobs (empty array when idle)
 - `from`/`to` are **`NaiveDateTime`**; date-only strings treated as `T00:00:00`
 - All sources check QuestDB before fetching (dedup); `force=true` bypasses the check
+- Concurrent requests for the same source+partition are deduplicated: the second request skips keys already being indexed (`"already being indexed"` in `keys_skipped`)
 
 | Source | Steps | Table | Available from |
 |---|---|---|---|
@@ -54,6 +56,16 @@ Rust async service that backfills and streams trading signals/market data into *
 | `HyperliquidL2Orderbook` | hourly | `l2_orderbook` | 2023-04-15 |
 | `HyperliquidNodeFills` | hourly | `hyperliquid_fill` | 2025-07-27 |
 | `HyperliquidNodeFills1mAggregate` | hourly | `hyperliquid_fill_1m_aggregate` | 2025-07-27 |
+
+### `/backfill/status` response fields
+| Field | Description |
+|---|---|
+| `id` | Unique job ID |
+| `source` | Source name (e.g. `HyperliquidNodeFills`) |
+| `current_key` | Partition key currently being processed |
+| `keys_done` | Partitions completed so far |
+| `keys_total` | Total partitions in the job |
+| `elapsed_ms` | Milliseconds since the job started |
 
 ## QuestDB patterns
 - Timestamps in **microseconds** (`ms * 1_000`, `chrono::DateTime::timestamp_micros()`)

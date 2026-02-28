@@ -1,4 +1,5 @@
 mod endpoint;
+use crate::backfill::tracker::BackfillTracker;
 use crate::config::Config;
 use crate::metadata::cargo_package_version;
 use endpoint::Endpoint;
@@ -27,7 +28,7 @@ pub async fn host_rest_api_server(config: Config) -> Result<(), ApiError> {
 
     // stable
     let service_api_root = {
-        let all_ep = Endpoint { config };
+        let all_ep = Endpoint { config, tracker: BackfillTracker::new() };
         OpenApiService::new(all_ep, title, cargo_package_version())
             .server(ServerObject::new(&url))
             .description(desciption)

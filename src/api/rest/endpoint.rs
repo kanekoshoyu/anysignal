@@ -3,6 +3,7 @@ use crate::backfill::l2_orderbook::{L2PartitionKey, L2SnapshotSource};
 use crate::backfill::node_fills_1m_aggregate::{NodeFills1mAggregateHourKey, NodeFills1mAggregateSource};
 use crate::backfill::node_fills_by_block::{NodeFillsHourKey, NodeFillsSource};
 use crate::backfill::run_backfill;
+use crate::backfill::tracker::BackfillTracker;
 use crate::config::Config;
 use crate::database::QuestDbClient;
 use crate::metadata::cargo_package_version;
@@ -29,6 +30,7 @@ fn parse_flexible_datetime(s: &str) -> Result<NaiveDateTime, String> {
 
 pub struct Endpoint {
     pub config: Config,
+    pub tracker: BackfillTracker,
 }
 
 // ---------------------------------------------------------------------------
@@ -95,6 +97,23 @@ struct BackfillResult {
     elapsed_ms: u64,
 }
 
+/// Status of one active backfill job.
+#[derive(Debug, Object)]
+struct BackfillStatusEntry {
+    /// Unique job ID assigned at registration.
+    id: u64,
+    /// Source name (e.g. `"HyperliquidNodeFills"`).
+    source: String,
+    /// Partition key currently being processed (`null` if not yet started).
+    current_key: Option<String>,
+    /// Number of partitions completed so far.
+    keys_done: u64,
+    /// Total partitions in this job.
+    keys_total: u64,
+    /// Milliseconds elapsed since the job started.
+    elapsed_ms: u64,
+}
+
 #[derive(ApiResponse)]
 enum BackfillApiResponse {
     /// Backfill finished — inspect `dates_err` for any per-period failures.
@@ -124,6 +143,29 @@ impl Endpoint {
     #[oai(path = "/version", method = "get")]
     async fn version(&self) -> PlainText<String> {
         PlainText(cargo_package_version())
+    }
+
+    /// List all currently running backfill jobs.
+    ///
+    /// Returns an empty array when no backfill is active.
+    /// Each entry shows the source, the partition key currently being
+    /// processed, progress counts, and elapsed time.
+    #[oai(path = "/backfill/status", method = "get")]
+    async fn backfill_status(&self) -> Json<Vec<BackfillStatusEntry>> {
+        let entries = self
+            .tracker
+            .list()
+            .into_iter()
+            .map(|s| BackfillStatusEntry {
+                id: s.id,
+                source: s.source,
+                current_key: s.current_key,
+                keys_done: s.keys_done as u64,
+                keys_total: s.keys_total as u64,
+                elapsed_ms: s.elapsed_ms,
+            })
+            .collect();
+        Json(entries)
     }
 
     /// Backfill historic data for a datetime range.
@@ -210,7 +252,7 @@ impl Endpoint {
                     keys
                 };
 
-                match run_backfill(&source, &db, keys, force).await {
+                match run_backfill(&source, &db, keys, force, Some((&self.tracker, "HyperliquidAssetCtxs"))).await {
                     Ok(stats) => BackfillApiResponse::Ok(Json(stats.into())),
                     Err(msg) => BackfillApiResponse::InternalError(PlainText(msg)),
                 }
@@ -253,7 +295,7 @@ impl Endpoint {
                     keys
                 };
 
-                match run_backfill(&source, &db, keys, force).await {
+                match run_backfill(&source, &db, keys, force, Some((&self.tracker, "HyperliquidL2Orderbook"))).await {
                     Ok(stats) => BackfillApiResponse::Ok(Json(stats.into())),
                     Err(msg) => BackfillApiResponse::InternalError(PlainText(msg)),
                 }
@@ -280,7 +322,7 @@ impl Endpoint {
                     keys
                 };
 
-                match run_backfill(&source, &db, keys, force).await {
+                match run_backfill(&source, &db, keys, force, Some((&self.tracker, "HyperliquidNodeFills"))).await {
                     Ok(stats) => BackfillApiResponse::Ok(Json(stats.into())),
                     Err(msg) => BackfillApiResponse::InternalError(PlainText(msg)),
                 }
@@ -308,7 +350,7 @@ impl Endpoint {
                     keys
                 };
 
-                match run_backfill(&source, &db, keys, force).await {
+                match run_backfill(&source, &db, keys, force, Some((&self.tracker, "HyperliquidNodeFills1mAggregate"))).await {
                     Ok(stats) => BackfillApiResponse::Ok(Json(stats.into())),
                     Err(msg) => BackfillApiResponse::InternalError(PlainText(msg)),
                 }
