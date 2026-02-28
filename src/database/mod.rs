@@ -196,6 +196,20 @@ impl QuestDbClient {
         f(&mut guard)
     }
 
+    /// Run an arbitrary SQL query via the QuestDB HTTP `/exec` endpoint and
+    /// return the raw JSON response body.
+    pub async fn query_json(&self, sql: &str) -> AnySignalResult<serde_json::Value> {
+        let url = format!("http://{}/exec", self.addr);
+        let json: serde_json::Value = reqwest::Client::new()
+            .get(&url)
+            .query(&[("query", sql)])
+            .send()
+            .await?
+            .json()
+            .await?;
+        Ok(json)
+    }
+
     /// Run a `SELECT count()` SQL query via the QuestDB HTTP `/exec` endpoint
     /// and return the first cell as an `i64`.
     ///

@@ -7,7 +7,12 @@ pub mod tracker;
 use crate::adapter::error::AdapterError;
 use crate::database::QuestDbClient;
 use crate::error::{AnySignalError, AnySignalResult};
+use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicU64, Ordering};
 use tracker::BackfillTracker;
+
+/// Maximum number of partition keys processed concurrently within one backfill job.
+const BACKFILL_CONCURRENCY: usize = 8;
 
 // ---------------------------------------------------------------------------
 // Traits
@@ -65,10 +70,11 @@ pub struct BackfillStats {
     pub elapsed_ms: u64,
 }
 
-/// Drive a backfill loop over `keys`, honouring dedup and collecting results.
+/// Drive a concurrent backfill over `keys`, honouring dedup and collecting results.
 ///
-/// Returns `Err(msg)` immediately on an AWS credential error (all subsequent
-/// fetches would fail anyway).  Otherwise accumulates per-key outcomes into
+/// Up to [`BACKFILL_CONCURRENCY`] keys are processed simultaneously.
+/// Returns `Err(msg)` if an AWS credential error is encountered (recorded after
+/// all in-flight work drains).  Otherwise accumulates per-key outcomes into
 /// [`BackfillStats`].
 ///
 /// When `tracker` is provided the job is registered on entry and automatically
@@ -76,9 +82,9 @@ pub struct BackfillStats {
 /// always empty when no backfill is running.
 ///
 /// Error classification per key:
-/// - `Unauthorized`  → fatal, return `Err` immediately
+/// - `Unauthorized`  → fatal; remaining keys are skipped after in-flight work drains
 /// - `NotFound`      → skipped (data absent from archive)
-/// - anything else   → recorded in `dates_err`, loop continues
+/// - anything else   → recorded in `keys_err`, loop continues
 pub async fn run_backfill<S>(
     source: &S,
     db: &QuestDbClient,
@@ -89,71 +95,160 @@ pub async fn run_backfill<S>(
 where
     S: PartitionedSource,
 {
+    use futures::StreamExt as _;
+
     let started = std::time::Instant::now();
 
     // Register with the tracker; guard unregisters on any return path.
-    let _guard = tracker.map(|(t, name)| t.register(name, keys.len()));
+    let _guard = tracker.map(|(t, name)| t.register(name));
+    let guard_id = _guard.as_ref().map(|g| g.id);
 
-    let mut stats = BackfillStats {
-        keys_ok: Vec::new(),
-        keys_err: Vec::new(),
-        keys_skipped: Vec::new(),
-        rows_inserted: 0,
-        elapsed_ms: 0,
-    };
+    // Shared accumulators written to by concurrent futures.
+    // Mutexes are never held across `.await` points, so no async deadlocks.
+    let keys_ok      = Arc::new(Mutex::new(Vec::<String>::new()));
+    let keys_err     = Arc::new(Mutex::new(Vec::<String>::new()));
+    let keys_skipped = Arc::new(Mutex::new(Vec::<String>::new()));
+    let rows_total   = Arc::new(AtomicU64::new(0));
+    let fatal_msg    = Arc::new(Mutex::new(None::<String>));
 
-    for (idx, key) in keys.into_iter().enumerate() {
-        let label = key.to_string();
+    {
+        let keys_ok      = Arc::clone(&keys_ok);
+        let keys_err     = Arc::clone(&keys_err);
+        let keys_skipped = Arc::clone(&keys_skipped);
+        let rows_total   = Arc::clone(&rows_total);
+        let fatal_msg    = Arc::clone(&fatal_msg);
 
-        if let (Some((t, source_name)), Some(ref g)) = (tracker, &_guard) {
-            if !t.try_claim_key(g.id, source_name, &label, idx) {
-                stats
-                    .keys_skipped
-                    .push(format!("{label}: already being indexed"));
-                continue;
-            }
-        }
+        futures::stream::iter(keys)
+            .map(|key| {
+                // Clone Arcs once per key before entering the async block.
+                let keys_ok      = Arc::clone(&keys_ok);
+                let keys_err     = Arc::clone(&keys_err);
+                let keys_skipped = Arc::clone(&keys_skipped);
+                let rows_total   = Arc::clone(&rows_total);
+                let fatal_msg    = Arc::clone(&fatal_msg);
 
-        if !force {
-            match S::partition_exists(db, &key).await {
-                Ok(true) => {
-                    stats.keys_skipped.push(label);
-                    continue;
+                async move {
+                    // Skip if a fatal credential error was already recorded.
+                    {
+                        let f = fatal_msg.lock().unwrap_or_else(|p| p.into_inner());
+                        if f.is_some() {
+                            return;
+                        }
+                    }
+
+                    let label = key.to_string();
+
+                    // Dedup: check whether another concurrent job is already
+                    // processing this key for the same source.
+                    let claimed = match (tracker, guard_id) {
+                        (Some((t, sn)), Some(gid)) => t.try_claim_key(gid, sn, &label),
+                        _ => true,
+                    };
+
+                    if !claimed {
+                        keys_skipped
+                            .lock()
+                            .unwrap_or_else(|p| p.into_inner())
+                            .push(format!("{label}: already being indexed"));
+                        return;
+                    }
+
+                    // Release the claimed key from the ongoing set on exit.
+                    let release = || {
+                        if let (Some((t, _)), Some(gid)) = (tracker, guard_id) {
+                            t.release_key(gid, &label);
+                        }
+                    };
+
+                    // Existence check.
+                    if !force {
+                        match S::partition_exists(db, &key).await {
+                            Ok(true) => {
+                                keys_skipped
+                                    .lock()
+                                    .unwrap_or_else(|p| p.into_inner())
+                                    .push(label.clone());
+                                release();
+                                return;
+                            }
+                            Ok(false) => {}
+                            Err(e) => {
+                                keys_err
+                                    .lock()
+                                    .unwrap_or_else(|p| p.into_inner())
+                                    .push(format!("{label}: existence check failed: {e}"));
+                                release();
+                                return;
+                            }
+                        }
+                    }
+
+                    // Ingest partition.
+                    match source.ingest_partition(db, &key).await {
+                        Ok(ps) => {
+                            tracing::info!(
+                                key       = %label,
+                                fetch_ms  = ps.fetch_ms,
+                                insert_ms = ps.insert_ms,
+                                rows      = ps.rows,
+                                "partition ingested"
+                            );
+                            rows_total.fetch_add(ps.rows, Ordering::Relaxed);
+                            keys_ok
+                                .lock()
+                                .unwrap_or_else(|p| p.into_inner())
+                                .push(label.clone());
+                        }
+                        Err(AnySignalError::Adapter(AdapterError::Unauthorized(msg))) => {
+                            *fatal_msg.lock().unwrap_or_else(|p| p.into_inner()) =
+                                Some(format!(
+                                    "AWS credential error — all further periods would fail: {msg}"
+                                ));
+                            keys_err
+                                .lock()
+                                .unwrap_or_else(|p| p.into_inner())
+                                .push(format!("{label}: {msg}"));
+                        }
+                        Err(AnySignalError::Adapter(AdapterError::NotFound(msg))) => {
+                            keys_skipped
+                                .lock()
+                                .unwrap_or_else(|p| p.into_inner())
+                                .push(format!("{label}: {msg}"));
+                        }
+                        Err(e) => {
+                            keys_err
+                                .lock()
+                                .unwrap_or_else(|p| p.into_inner())
+                                .push(format!("{label}: {e}"));
+                        }
+                    }
+
+                    release();
                 }
-                Ok(false) => {}
-                Err(e) => {
-                    stats
-                        .keys_err
-                        .push(format!("{label}: existence check failed: {e}"));
-                    continue;
-                }
-            }
-        }
-
-        match source.ingest_partition(db, &key).await {
-            Ok(ps) => {
-                tracing::info!(
-                    key = %label,
-                    fetch_ms = ps.fetch_ms,
-                    insert_ms = ps.insert_ms,
-                    rows = ps.rows,
-                    "partition ingested"
-                );
-                stats.rows_inserted += ps.rows;
-                stats.keys_ok.push(label);
-            }
-            Err(AnySignalError::Adapter(AdapterError::Unauthorized(msg))) => {
-                return Err(format!(
-                    "AWS credential error — all further periods would fail: {msg}"
-                ));
-            }
-            Err(AnySignalError::Adapter(AdapterError::NotFound(msg))) => {
-                stats.keys_skipped.push(format!("{label}: {msg}"));
-            }
-            Err(e) => stats.keys_err.push(format!("{label}: {e}")),
-        }
+            })
+            .buffer_unordered(BACKFILL_CONCURRENCY)
+            .collect::<()>()
+            .await;
     }
 
-    stats.elapsed_ms = started.elapsed().as_millis() as u64;
-    Ok(stats)
+    let elapsed_ms = started.elapsed().as_millis() as u64;
+
+    // Extract accumulated results (stream is done; no other holders of the Arcs).
+    let fatal = std::mem::take(&mut *fatal_msg.lock().unwrap_or_else(|p| p.into_inner()));
+    if let Some(msg) = fatal {
+        return Err(msg);
+    }
+
+    let keys_ok      = std::mem::take(&mut *keys_ok.lock().unwrap_or_else(|p| p.into_inner()));
+    let keys_err     = std::mem::take(&mut *keys_err.lock().unwrap_or_else(|p| p.into_inner()));
+    let keys_skipped = std::mem::take(&mut *keys_skipped.lock().unwrap_or_else(|p| p.into_inner()));
+    let rows_inserted = rows_total.load(Ordering::Relaxed);
+
+    Ok(BackfillStats {
+        keys_ok,
+        keys_err,
+        keys_skipped,
+        rows_inserted,
+        elapsed_ms,
+    })
 }

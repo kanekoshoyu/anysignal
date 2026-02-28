@@ -126,6 +126,37 @@ enum BackfillApiResponse {
 }
 
 // ---------------------------------------------------------------------------
+// Database types
+// ---------------------------------------------------------------------------
+
+/// Disk space and row count for a single QuestDB table.
+#[derive(Debug, Object)]
+struct TableStats {
+    /// Table name.
+    name: String,
+    /// Total rows across all partitions.
+    row_count: i64,
+    /// Total disk usage in bytes across all partitions.
+    disk_size_bytes: i64,
+}
+
+/// Response for `GET /database`.
+#[derive(Debug, Object)]
+struct DatabaseStats {
+    tables: Vec<TableStats>,
+    /// Sum of `disk_size_bytes` across all tables.
+    total_disk_size_bytes: i64,
+}
+
+#[derive(ApiResponse)]
+enum DatabaseApiResponse {
+    #[oai(status = 200)]
+    Ok(Json<DatabaseStats>),
+    #[oai(status = 500)]
+    InternalError(PlainText<String>),
+}
+
+// ---------------------------------------------------------------------------
 // Endpoints
 // ---------------------------------------------------------------------------
 
@@ -353,6 +384,73 @@ impl Endpoint {
                 }
             }
         }
+    }
+
+    /// Return disk usage and row counts for every QuestDB table.
+    ///
+    /// Queries `tables()` to list all tables, then aggregates
+    /// `diskSize` and `numRows` from `table_partitions()` for each one.
+    #[oai(path = "/database", method = "get")]
+    async fn database(&self) -> DatabaseApiResponse {
+        let db = match QuestDbClient::new(&self.config) {
+            Ok(c) => c,
+            Err(e) => {
+                return DatabaseApiResponse::InternalError(PlainText(format!(
+                    "Failed to connect to QuestDB: {e}"
+                )))
+            }
+        };
+
+        let tables_json = match db
+            .query_json("SELECT table_name FROM tables() ORDER BY table_name")
+            .await
+        {
+            Ok(j) => j,
+            Err(e) => {
+                return DatabaseApiResponse::InternalError(PlainText(format!(
+                    "Failed to list tables: {e}"
+                )))
+            }
+        };
+
+        let table_names: Vec<String> = tables_json["dataset"]
+            .as_array()
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|row| row[0].as_str().map(String::from))
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        let mut tables = Vec::with_capacity(table_names.len());
+        let mut total_disk_size_bytes: i64 = 0;
+
+        for name in table_names {
+            let sql = format!(
+                "SELECT sum(diskSize), sum(numRows) FROM table_partitions('{name}')"
+            );
+            let json = match db.query_json(&sql).await {
+                Ok(j) => j,
+                Err(_) => continue,
+            };
+            let first_row = match json["dataset"].as_array().and_then(|d| d.first()) {
+                Some(row) => row.clone(),
+                None => continue,
+            };
+            let disk_size_bytes = first_row[0].as_i64().unwrap_or(0);
+            let row_count = first_row[1].as_i64().unwrap_or(0);
+            total_disk_size_bytes += disk_size_bytes;
+            tables.push(TableStats {
+                name,
+                row_count,
+                disk_size_bytes,
+            });
+        }
+
+        DatabaseApiResponse::Ok(Json(DatabaseStats {
+            tables,
+            total_disk_size_bytes,
+        }))
     }
 }
 

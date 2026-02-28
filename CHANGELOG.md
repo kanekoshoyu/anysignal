@@ -1,6 +1,11 @@
 # [signal](./README.md) changelog
 > [TODO](./src/README.md)
 
+## [0.10.0] — 2026-02-28
+### Added
+- `GET /database` endpoint — returns name, row count, and disk usage (bytes) for every QuestDB table
+- `QuestDbClient::query_json()` — generic HTTP `/exec` helper used by the new endpoint; queries `tables()` then `table_partitions()` to aggregate per-table stats
+
 ## [0.9.1]
 ### Changed
 - `/backfill/status`: added `started_at` (RFC 3339 UTC, e.g. `"2026-02-28T14:03:22Z"`) to each job entry

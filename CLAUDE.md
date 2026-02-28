@@ -43,6 +43,16 @@ Rust async service that backfills and streams trading signals/market data into *
 - **Hour boundary spillover:** S3 files are keyed by block *processing* time, not fill timestamp.
   When aggregating by minute, always fetch H-1 and H+1 and filter to `[hour_start_ms, hour_end_ms)`.
 
+## REST endpoints
+
+| Endpoint | Description |
+|---|---|
+| `GET /` | Health check |
+| `GET /version` | Semver string |
+| `GET /database` | Disk usage + row counts for all QuestDB tables |
+| `GET /backfill/status` | List active backfill jobs (empty array when idle) |
+| `GET /backfill` | Trigger historic backfill (see params below) |
+
 ## Backfill API design
 - `GET /backfill?from=2024-01-01T00:00:00&to=2024-01-07T23:00:00&source=…&force=false`
 - `GET /backfill/status` — list all active backfill jobs (empty array when idle)
@@ -56,6 +66,14 @@ Rust async service that backfills and streams trading signals/market data into *
 | `HyperliquidL2Orderbook` | hourly | `l2_orderbook` | 2023-04-15 |
 | `HyperliquidNodeFills` | hourly | `hyperliquid_fill` | 2025-07-27 |
 | `HyperliquidNodeFills1mAggregate` | hourly | `hyperliquid_fill_1m_aggregate` | 2025-07-27 |
+
+### `/database` response fields
+| Field | Description |
+|---|---|
+| `tables[].name` | Table name |
+| `tables[].row_count` | Total rows across all partitions |
+| `tables[].disk_size_bytes` | Total disk usage in bytes |
+| `total_disk_size_bytes` | Sum of all tables' disk usage |
 
 ### `/backfill/status` response fields
 | Field | Description |
@@ -97,6 +115,12 @@ CREATE TABLE hyperliquid_fill_1m_aggregate (
     trade_count LONG
 ) timestamp(ts) PARTITION BY DAY;
 ```
+
+## Version bumping
+When asked to bump the version:
+1. Update the version in `Cargo.toml`
+2. Add a `CHANGELOG.md` entry (create if missing) — include date, new version, and bullet points summarising what changed
+3. Audit `CLAUDE.md` for completeness — update any tables (sources, endpoints, schemas) to reflect the new functionality
 
 ## Clippy lints
 `unwrap_used`, `expect_used`, `panic` are **deny** — use `?` in production; `unwrap()` only inside `#[cfg(test)]`.
