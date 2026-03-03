@@ -88,6 +88,7 @@ This makes it incompatible with the fill-level schema — **coverage gap: 2025-0
 | `HyperliquidAssetCtxs` | daily | `market_data` | 2023-05-20 | present |
 | `HyperliquidL2Orderbook` | hourly | `l2_orderbook` | 2023-04-15 | present |
 | `HyperliquidNodeFillsLegacy` | hourly | `hyperliquid_fill` | 2025-05-25T14:00 | 2025-07-27T08:00 |
+| `HyperliquidNodeFillsLegacy1mAggregate` | hourly | `hyperliquid_fill_1m_aggregate` | 2025-05-25T14:00 | 2025-07-27T08:00 |
 | `HyperliquidNodeFills` | hourly | `hyperliquid_fill` | 2025-07-27T08:00 | present |
 | `HyperliquidNodeFills1mAggregate` | hourly | `hyperliquid_fill_1m_aggregate` | 2025-07-27 | present |
 
@@ -116,8 +117,18 @@ This makes it incompatible with the fill-level schema — **coverage gap: 2025-0
 ## Key table schemas
 
 ```sql
+-- ts is a POINT-IN-TIME SNAPSHOT: 12:00:00 = market state observed AT 12:00:00.
+-- Tall/normalised format: one row per (ts, ticker, category/metric).
+CREATE TABLE market_data (
+    ts       TIMESTAMP,  -- point-in-time snapshot, NOT a window start
+    category SYMBOL,     -- metric name: 'funding', 'mark_px', 'oracle_px', …
+    ticker   SYMBOL,
+    source   SYMBOL,     -- 'HYPERLIQUID_S3'
+    value    DOUBLE
+) timestamp(ts) PARTITION BY DAY;
+
 CREATE TABLE hyperliquid_fill (
-    ts             TIMESTAMP,
+    ts             TIMESTAMP,  -- exact fill timestamp (point-in-time)
     coin           SYMBOL,
     wallet         SYMBOL,
     side           SYMBOL,   -- 'buy' | 'sell'
@@ -130,6 +141,10 @@ CREATE TABLE hyperliquid_fill (
     realized_pnl   DOUBLE
 ) timestamp(ts) PARTITION BY DAY;
 
+-- ts is the LEFT-CLOSED WINDOW START: 12:00:00 covers fills in [12:00:00, 12:01:00).
+-- NOTE: semantics differ from market_data.ts (snapshot) vs fill_1m_aggregate.ts (window open).
+-- When joining: market_data.ts = fill_1m_agg.ts gives the price AT the start of the minute
+-- in which those fills occurred. The fill data covers up to 12:00:59.999 for that ts.
 CREATE TABLE hyperliquid_fill_1m_aggregate (
     ts          TIMESTAMP,  -- left-closed minute bucket: 12:00 covers [12:00, 12:01)
     coin        SYMBOL,
