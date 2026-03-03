@@ -34,13 +34,36 @@ Rust async service that backfills and streams trading signals/market data into *
 - `asset_ctxs` CSV: snake_case headers; `time` is `chrono::DateTime<Utc>` (ISO 8601)
 
 ### `hl-mainnet-node-data` bucket (ap-northeast-1, requester-pays)
-| Dataset | Key pattern | LZ4 format | Hour fmt |
-|---|---|---|---|
-| node fills by block | `node_fills_by_block/hourly/{YYYYMMDD}/{H}.lz4` | frame (`lz4::Decoder`) | unpadded `0`–`23` |
+| Dataset | Key pattern | LZ4 format | Hour fmt | Available | Implemented |
+|---|---|---|---|---|---|
+| node trades | `node_trades/hourly/{YYYYMMDD}/{H}.lz4` | frame (`lz4::Decoder`) | unpadded `0`–`23` | 2025-03-22T10:00 – 2025-05-25T13:00 | ❌ skipped |
+| node fills (legacy) | `node_fills/hourly/{YYYYMMDD}/{H}.lz4` | frame (`lz4::Decoder`) | unpadded `0`–`23` | 2025-05-25T14:00 – 2025-07-27T08:00 | ✅ `HyperliquidNodeFillsLegacy` |
+| node fills by block | `node_fills_by_block/hourly/{YYYYMMDD}/{H}.lz4` | frame (`lz4::Decoder`) | unpadded `0`–`23` | 2025-07-27T08:00 – present | ✅ `HyperliquidNodeFills` |
 
-- Wire format: NDJSON, one line per block — `{"events":[["<wallet>", {fill…}], …]}`
+**`node_trades` wire format (not implemented):** NDJSON, one trade-level object per line.
+Each record represents a single matched trade with both participants in `side_info[0/1]`.
+Missing fields vs `hyperliquid_fill`: no `category` (Open Long / Close Short / etc.) and no `realized_pnl`.
+This makes it incompatible with the fill-level schema — **coverage gap: 2025-03-22T10:00 – 2025-05-25T13:00**.
+
+```json
+{"coin":"AAVE","side":"B","time":"2025-05-25T13:59:59.974190721","px":"264.56","sz":"0.06",
+ "hash":"0x84a0…","trade_dir_override":"Na",
+ "side_info":[{"user":"0xdbe2…","start_pos":"-153.07","oid":97125228063,"twap_id":null,"cloid":"0xa92d…"},
+              {"user":"0xf1d4…","start_pos":"-278.05","oid":97125145866,"twap_id":null,"cloid":"0xf800…"}]}
+```
+
+- `trade_dir_override`: `"Na"` | `"LiquidatedMarket"` | `"NetChildVaultPositions"`
+- `side_info` always has exactly 2 entries (index 0 = taker, index 1 = maker)
+- Timestamp is ISO 8601 with nanoseconds — **not** Unix milliseconds
+
+**`node_fills` (legacy) wire format:** NDJSON, one line per fill — `["<wallet>", {fill…}]`
+
+**`node_fills_by_block` wire format:** NDJSON, one line per block — `{"events":[["<wallet>", {fill…}], …]}`
+
 - `fill.side`: `"B"` → `"buy"`, `"A"` → `"sell"`; `fill.dir` stored as `category`
-- **Hour boundary spillover:** S3 files are keyed by block *processing* time, not fill timestamp.
+- Both fill datasets write `source = 'HYPERLIQUID_NODE'`; the `partition_exists` dedup check covers both
+- **Overlap:** 2025-07-27 hour 8 exists in both fill datasets — whichever is backfilled first wins
+- **Hour boundary spillover (`node_fills_by_block` only):** S3 files are keyed by block *processing* time, not fill timestamp.
   When aggregating by minute, always fetch H-1 and H+1 and filter to `[hour_start_ms, hour_end_ms)`.
 
 ## REST endpoints
@@ -60,12 +83,13 @@ Rust async service that backfills and streams trading signals/market data into *
 - All sources check QuestDB before fetching (dedup); `force=true` bypasses the check
 - Concurrent requests for the same source+partition are deduplicated: the second request skips keys already being indexed (`"already being indexed"` in `keys_skipped`)
 
-| Source | Steps | Table | Available from |
-|---|---|---|---|
-| `HyperliquidAssetCtxs` | daily | `market_data` | 2023-05-20 |
-| `HyperliquidL2Orderbook` | hourly | `l2_orderbook` | 2023-04-15 |
-| `HyperliquidNodeFills` | hourly | `hyperliquid_fill` | 2025-07-27 |
-| `HyperliquidNodeFills1mAggregate` | hourly | `hyperliquid_fill_1m_aggregate` | 2025-07-27 |
+| Source | Steps | Table | Available from | Available to |
+|---|---|---|---|---|
+| `HyperliquidAssetCtxs` | daily | `market_data` | 2023-05-20 | present |
+| `HyperliquidL2Orderbook` | hourly | `l2_orderbook` | 2023-04-15 | present |
+| `HyperliquidNodeFillsLegacy` | hourly | `hyperliquid_fill` | 2025-05-25T14:00 | 2025-07-27T08:00 |
+| `HyperliquidNodeFills` | hourly | `hyperliquid_fill` | 2025-07-27T08:00 | present |
+| `HyperliquidNodeFills1mAggregate` | hourly | `hyperliquid_fill_1m_aggregate` | 2025-07-27 | present |
 
 ### `/database` response fields
 | Field | Description |

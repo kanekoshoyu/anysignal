@@ -1,5 +1,6 @@
 use crate::backfill::asset_ctxs::AssetCtxsSource;
 use crate::backfill::l2_orderbook::{L2PartitionKey, L2SnapshotSource};
+use crate::backfill::node_fills::{NodeFillsLegacyHourKey, NodeFillsLegacySource};
 use crate::backfill::node_fills_1m_aggregate::{NodeFills1mAggregateHourKey, NodeFills1mAggregateSource};
 use crate::backfill::node_fills_by_block::{NodeFillsHourKey, NodeFillsSource};
 use crate::backfill::run_backfill;
@@ -74,6 +75,22 @@ enum BackfillSource {
     ///
     /// **Data available from:** `2025-07-27`
     HyperliquidNodeFills1mAggregate,
+
+    /// Hyperliquid legacy node fills from `s3://hl-mainnet-node-data`.
+    ///
+    /// Fetches `node_fills/hourly/{YYYYMMDD}/{H}.lz4` for every hour in the
+    /// requested range and inserts into `hyperliquid_fill`.
+    ///
+    /// **Wire format:** one fill per line as `["wallet", fill_object]` — differs
+    /// from `HyperliquidNodeFills` whose files group fills by block
+    /// (`{"events":[...]}`).  The fill fields are otherwise identical.
+    ///
+    /// **Data available from:** `2025-05-25T14:00:00` **to** `2025-07-27T08:00:00`
+    ///
+    /// Note: `2025-07-27` hour 8 exists in both this dataset and
+    /// `HyperliquidNodeFills`.  The `partition_exists` check prevents
+    /// double-ingestion — whichever source is backfilled first wins.
+    HyperliquidNodeFillsLegacy,
 }
 
 /// Per-run summary returned by `GET /backfill`.
@@ -204,12 +221,19 @@ impl Endpoint {
     /// By default, periods already present in QuestDB are skipped.
     /// Set `force=true` to bypass that check and always fetch+insert.
     ///
-    /// | `source`                          | Steps  | Table                            | Available from | Extra params       |
-    /// |-----------------------------------|--------|----------------------------------|----------------|--------------------|
-    /// | `HyperliquidAssetCtxs`            | daily  | `market_data`                    | 2023-05-20     | —                  |
-    /// | `HyperliquidL2Orderbook`          | hourly | `l2_orderbook`                   | 2023-04-15     | `coins` (required) |
-    /// | `HyperliquidNodeFills`            | hourly | `hyperliquid_fill`               | 2025-07-27     | —                  |
-    /// | `HyperliquidNodeFills1mAggregate` | hourly | `hyperliquid_fill_1m_aggregate`  | 2025-07-27     | —                  |
+    /// | `source`                          | Steps  | Table                            | Available from         | Available to           | Extra params       |
+    /// |-----------------------------------|--------|----------------------------------|------------------------|------------------------|--------------------|
+    /// | `HyperliquidAssetCtxs`            | daily  | `market_data`                    | 2023-05-20             | present                | —                  |
+    /// | `HyperliquidL2Orderbook`          | hourly | `l2_orderbook`                   | 2023-04-15             | present                | `coins` (required) |
+    /// | `HyperliquidNodeFillsLegacy`      | hourly | `hyperliquid_fill`               | 2025-05-25T14:00:00    | 2025-07-27T08:00:00    | —                  |
+    /// | `HyperliquidNodeFills`            | hourly | `hyperliquid_fill`               | 2025-07-27T08:00:00    | present                | —                  |
+    /// | `HyperliquidNodeFills1mAggregate` | hourly | `hyperliquid_fill_1m_aggregate`  | 2025-07-27             | present                | —                  |
+    ///
+    /// **Coverage gap in `hyperliquid_fill`:** `2025-03-22T10:00` – `2025-05-25T13:00` is covered
+    /// by the `node_trades` S3 dataset (`node_trades/hourly/`), which uses a trade-level schema
+    /// (one record per matched trade, both participants in `side_info`).  It is missing the
+    /// `category` (Open Long / Close Short / …) and `realized_pnl` columns required by
+    /// `hyperliquid_fill`, so it is not implemented as a backfill source.
     ///
     /// **`HyperliquidNodeFills1mAggregate`** aggregates raw fills into
     /// `(coin, category, buy_side, minute)` buckets before writing.
@@ -379,6 +403,34 @@ impl Endpoint {
                 };
 
                 match run_backfill(&source, &db, keys, force, Some((&self.tracker, "HyperliquidNodeFills1mAggregate"))).await {
+                    Ok(stats) => BackfillApiResponse::Ok(Json(stats.into())),
+                    Err(msg) => BackfillApiResponse::InternalError(PlainText(msg)),
+                }
+            }
+
+            BackfillSource::HyperliquidNodeFillsLegacy => {
+                let source = match NodeFillsLegacySource::new().await {
+                    Ok(s) => s,
+                    Err(e) => {
+                        return BackfillApiResponse::InternalError(PlainText(format!(
+                            "Failed to initialise S3 client: {e}"
+                        )))
+                    }
+                };
+
+                // Build hour-by-hour key iterator.
+                // Data is available 2025-05-25T14:00:00 – 2025-07-27T08:00:00.
+                let keys = {
+                    let mut keys = Vec::new();
+                    let mut current = from.date().and_hms_opt(from.hour(), 0, 0).unwrap_or(from);
+                    while current <= to {
+                        keys.push(NodeFillsLegacyHourKey { hour: current });
+                        current += chrono::Duration::hours(1);
+                    }
+                    keys
+                };
+
+                match run_backfill(&source, &db, keys, force, Some((&self.tracker, "HyperliquidNodeFillsLegacy"))).await {
                     Ok(stats) => BackfillApiResponse::Ok(Json(stats.into())),
                     Err(msg) => BackfillApiResponse::InternalError(PlainText(msg)),
                 }

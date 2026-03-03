@@ -6,6 +6,7 @@ https://hyperliquid.gitbook.io/hyperliquid-docs/historical-data
 pub mod asset_ctxs;
 pub mod explorer_blocks;
 pub mod market_data;
+pub mod node_fills;
 pub mod node_fills_by_block;
 
 pub mod prelude {

@@ -1,5 +1,6 @@
 pub mod asset_ctxs;
 pub mod l2_orderbook;
+pub mod node_fills;
 pub mod node_fills_1m_aggregate;
 pub mod node_fills_by_block;
 pub mod tracker;
