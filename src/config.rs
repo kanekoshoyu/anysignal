@@ -14,6 +14,9 @@ pub struct Config {
     pub questdb_user: Option<String>,
     pub questdb_password: Option<String>,
     pub api_base_url: String,
+    /// Path to the postmortem log file. Written on panic; survives restarts.
+    /// Set via `POSTMORTEM_LOG` (default: `/data/postmortem.log`).
+    pub postmortem_log_path: String,
 }
 
 impl Config {
@@ -31,12 +34,15 @@ impl Config {
         let questdb_password = env::var("QUESTDB_PASSWORD").ok();
         let api_base_url =
             env::var("API_BASE_URL").unwrap_or_else(|_| "http://localhost:3000".to_string());
+        let postmortem_log_path =
+            env::var("POSTMORTEM_LOG").unwrap_or_else(|_| "/data/postmortem.log".to_string());
         Self {
             runners,
             questdb_addr,
             questdb_user,
             questdb_password,
             api_base_url,
+            postmortem_log_path,
         }
     }
 

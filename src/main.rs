@@ -19,6 +19,40 @@ async fn main() -> AnySignalResult<()> {
 
     // set up config to load API tokens
     let config: Config = Config::from_env();
+
+    // Install a panic hook that appends a JSON entry to the postmortem log
+    // file before the process exits.  The file persists across container
+    // restarts so the entry is readable after the service comes back up.
+    let postmortem_path = config.postmortem_log_path.clone();
+    let default_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        use std::io::Write as _;
+        let ts = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+        let message = info
+            .payload()
+            .downcast_ref::<&str>()
+            .copied()
+            .or_else(|| info.payload().downcast_ref::<String>().map(String::as_str))
+            .unwrap_or("(unknown panic payload)");
+        let location = info
+            .location()
+            .map(|l| format!("{}:{}:{}", l.file(), l.line(), l.column()))
+            .unwrap_or_else(|| "(unknown location)".to_string());
+        let entry = format!(
+            "{{\"ts\":\"{ts}\",\"message\":{},\"location\":{}}}\n",
+            serde_json::Value::String(message.to_string()),
+            serde_json::Value::String(location),
+        );
+        // Best-effort write — ignore I/O errors so we don't panic inside the hook.
+        if let Ok(mut file) = std::fs::OpenOptions::new()
+            .append(true)
+            .create(true)
+            .open(&postmortem_path)
+        {
+            let _ = file.write_all(entry.as_bytes());
+        }
+        default_hook(info);
+    }));
     let config_json = serde_json::to_string_pretty(&config).unwrap_or_default();
     tracing::info!("config loaded:\n{config_json}");
 
