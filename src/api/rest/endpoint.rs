@@ -6,7 +6,7 @@ use crate::backfill::node_fills_1m_aggregate::{NodeFills1mAggregateHourKey, Node
 use crate::backfill::node_fills_by_block::{NodeFillsHourKey, NodeFillsSource};
 use crate::backfill::node_fills_legacy_1m_aggregate::{NodeFillsLegacy1mAggregateHourKey, NodeFillsLegacy1mAggregateSource};
 use crate::backfill::run_backfill;
-use crate::backfill::tracker::BackfillTracker;
+use crate::backfill::tracker::{BackfillTracker, PostmortemSnapshot};
 use crate::backfill::PartitionedSource;
 use crate::config::Config;
 use crate::database::QuestDbClient;
@@ -251,6 +251,33 @@ enum CoverageApiResponse {
 }
 
 // ---------------------------------------------------------------------------
+// Postmortem types
+// ---------------------------------------------------------------------------
+
+/// Summary of one completed backfill job.
+#[derive(Debug, Object)]
+struct PostmortemEntry {
+    /// Source name (e.g. `"MarketState1m"`).
+    source: String,
+    /// RFC 3339 UTC timestamp when the job started.
+    started_at: String,
+    /// RFC 3339 UTC timestamp when the job completed.
+    completed_at: String,
+    /// Wall-clock milliseconds the job ran for.
+    elapsed_ms: u64,
+    /// Total rows written to QuestDB.
+    rows_inserted: u64,
+    /// Number of partitions ingested successfully.
+    keys_ok_count: u64,
+    /// Number of partitions skipped (already present or deduped).
+    keys_skipped_count: u64,
+    /// Per-partition errors, formatted as `"<key>: <error message>"`.
+    errors: Vec<String>,
+    /// Set when the job aborted early (e.g. AWS credential failure).
+    fatal_error: Option<String>,
+}
+
+// ---------------------------------------------------------------------------
 // Endpoints
 // ---------------------------------------------------------------------------
 
@@ -394,10 +421,7 @@ impl Endpoint {
                     keys
                 };
 
-                match run_backfill(&source, &db, keys, force, Some((&self.tracker, "HyperliquidAssetCtxs"))).await {
-                    Ok(stats) => BackfillApiResponse::Ok(Json(stats.into())),
-                    Err(msg) => BackfillApiResponse::InternalError(PlainText(msg)),
-                }
+                self.record_backfill_result("HyperliquidAssetCtxs", run_backfill(&source, &db, keys, force, Some((&self.tracker, "HyperliquidAssetCtxs"))).await)
             }
 
             BackfillSource::HyperliquidL2Orderbook => {
@@ -437,10 +461,7 @@ impl Endpoint {
                     keys
                 };
 
-                match run_backfill(&source, &db, keys, force, Some((&self.tracker, "HyperliquidL2Orderbook"))).await {
-                    Ok(stats) => BackfillApiResponse::Ok(Json(stats.into())),
-                    Err(msg) => BackfillApiResponse::InternalError(PlainText(msg)),
-                }
+                self.record_backfill_result("HyperliquidL2Orderbook", run_backfill(&source, &db, keys, force, Some((&self.tracker, "HyperliquidL2Orderbook"))).await)
             }
 
             BackfillSource::HyperliquidNodeFills => {
@@ -464,10 +485,7 @@ impl Endpoint {
                     keys
                 };
 
-                match run_backfill(&source, &db, keys, force, Some((&self.tracker, "HyperliquidNodeFills"))).await {
-                    Ok(stats) => BackfillApiResponse::Ok(Json(stats.into())),
-                    Err(msg) => BackfillApiResponse::InternalError(PlainText(msg)),
-                }
+                self.record_backfill_result("HyperliquidNodeFills", run_backfill(&source, &db, keys, force, Some((&self.tracker, "HyperliquidNodeFills"))).await)
             }
 
             BackfillSource::HyperliquidNodeFills1mAggregate => {
@@ -492,10 +510,7 @@ impl Endpoint {
                     keys
                 };
 
-                match run_backfill(&source, &db, keys, force, Some((&self.tracker, "HyperliquidNodeFills1mAggregate"))).await {
-                    Ok(stats) => BackfillApiResponse::Ok(Json(stats.into())),
-                    Err(msg) => BackfillApiResponse::InternalError(PlainText(msg)),
-                }
+                self.record_backfill_result("HyperliquidNodeFills1mAggregate", run_backfill(&source, &db, keys, force, Some((&self.tracker, "HyperliquidNodeFills1mAggregate"))).await)
             }
 
             BackfillSource::HyperliquidNodeFillsLegacy => {
@@ -520,10 +535,7 @@ impl Endpoint {
                     keys
                 };
 
-                match run_backfill(&source, &db, keys, force, Some((&self.tracker, "HyperliquidNodeFillsLegacy"))).await {
-                    Ok(stats) => BackfillApiResponse::Ok(Json(stats.into())),
-                    Err(msg) => BackfillApiResponse::InternalError(PlainText(msg)),
-                }
+                self.record_backfill_result("HyperliquidNodeFillsLegacy", run_backfill(&source, &db, keys, force, Some((&self.tracker, "HyperliquidNodeFillsLegacy"))).await)
             }
 
             BackfillSource::HyperliquidNodeFillsLegacy1mAggregate => {
@@ -548,10 +560,7 @@ impl Endpoint {
                     keys
                 };
 
-                match run_backfill(&source, &db, keys, force, Some((&self.tracker, "HyperliquidNodeFillsLegacy1mAggregate"))).await {
-                    Ok(stats) => BackfillApiResponse::Ok(Json(stats.into())),
-                    Err(msg) => BackfillApiResponse::InternalError(PlainText(msg)),
-                }
+                self.record_backfill_result("HyperliquidNodeFillsLegacy1mAggregate", run_backfill(&source, &db, keys, force, Some((&self.tracker, "HyperliquidNodeFillsLegacy1mAggregate"))).await)
             }
 
             BackfillSource::MarketState1m => {
@@ -570,10 +579,7 @@ impl Endpoint {
                     keys
                 };
 
-                match run_backfill(&source, &db, keys, force, Some((&self.tracker, "MarketState1m"))).await {
-                    Ok(stats) => BackfillApiResponse::Ok(Json(stats.into())),
-                    Err(msg) => BackfillApiResponse::InternalError(PlainText(msg)),
-                }
+                self.record_backfill_result("MarketState1m", run_backfill(&source, &db, keys, force, Some((&self.tracker, "MarketState1m"))).await)
             }
         }
     }
@@ -643,6 +649,22 @@ impl Endpoint {
             tables,
             total_disk_size_bytes,
         }))
+    }
+
+    /// Return the postmortem log of recently completed backfill jobs.
+    ///
+    /// Lists the last 100 completed jobs, most recent first.
+    /// Each entry includes per-partition errors and an optional `fatal_error`
+    /// for jobs that aborted early (e.g. AWS credential failure).
+    #[oai(path = "/backfill/postmortem", method = "get")]
+    async fn backfill_postmortem(&self) -> Json<Vec<PostmortemEntry>> {
+        let entries = self
+            .tracker
+            .list_postmortem()
+            .into_iter()
+            .map(PostmortemEntry::from)
+            .collect();
+        Json(entries)
     }
 
     /// Check which partitions are present or missing in QuestDB for a source and date range.
@@ -783,6 +805,20 @@ impl Endpoint {
             gaps,
         }))
     }
+
+    /// Record a completed backfill result in the postmortem log and convert it
+    /// to the appropriate [`BackfillApiResponse`].
+    fn record_backfill_result(
+        &self,
+        source_name: &str,
+        result: Result<crate::backfill::BackfillStats, String>,
+    ) -> BackfillApiResponse {
+        self.tracker.record_completion(source_name, &result);
+        match result {
+            Ok(stats) => BackfillApiResponse::Ok(Json(stats.into())),
+            Err(msg) => BackfillApiResponse::InternalError(PlainText(msg)),
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -803,6 +839,22 @@ impl From<crate::backfill::BackfillStats> for BackfillResult {
             total_skipped,
             rows_inserted: s.rows_inserted,
             elapsed_ms: s.elapsed_ms,
+        }
+    }
+}
+
+impl From<PostmortemSnapshot> for PostmortemEntry {
+    fn from(s: PostmortemSnapshot) -> Self {
+        PostmortemEntry {
+            source: s.source,
+            started_at: s.started_at,
+            completed_at: s.completed_at,
+            elapsed_ms: s.elapsed_ms,
+            rows_inserted: s.rows_inserted,
+            keys_ok_count: s.keys_ok_count as u64,
+            keys_skipped_count: s.keys_skipped_count as u64,
+            errors: s.errors,
+            fatal_error: s.fatal_error,
         }
     }
 }
