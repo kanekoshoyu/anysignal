@@ -45,6 +45,15 @@ pub struct PartitionStats {
 pub trait PartitionedSource: Send + Sync {
     type Key: PartitionKey;
 
+    /// Maximum number of partitions processed concurrently within one backfill
+    /// job.  Defaults to [`BACKFILL_CONCURRENCY`] (8), which is appropriate
+    /// for S3-fetching sources.  Override with a lower value for sources that
+    /// issue multiple QuestDB queries per partition to avoid overwhelming the
+    /// database.
+    fn concurrency() -> usize {
+        BACKFILL_CONCURRENCY
+    }
+
     /// Return `true` if this partition is already present in QuestDB.
     /// Should return `Ok(false)` on any DB error so the backfill proceeds.
     async fn partition_exists(db: &QuestDbClient, key: &Self::Key) -> AnySignalResult<bool>;
@@ -127,6 +136,8 @@ where
     //   Ok((None,      label)) → already in QuestDB → keys_skipped
     //   Err(msg)               → existence check failed → keys_err
     // -----------------------------------------------------------------------
+    let concurrency = S::concurrency();
+
     let check_results: Vec<Result<(Option<S::Key>, String), String>> = if force {
         keys.into_iter()
             .map(|k| { let l = k.to_string(); Ok((Some(k), l)) })
@@ -141,7 +152,7 @@ where
                     Err(e)    => Err(format!("{label}: existence check failed: {e}")),
                 }
             })
-            .buffer_unordered(BACKFILL_CONCURRENCY)
+            .buffer_unordered(concurrency)
             .collect::<Vec<_>>()
             .await
     };
@@ -185,6 +196,7 @@ where
 
         futures::stream::iter(pending_keys)
             .map(|(key, label)| {
+
                 let keys_ok      = Arc::clone(&keys_ok);
                 let keys_err     = Arc::clone(&keys_err);
                 let keys_skipped = Arc::clone(&keys_skipped);
@@ -250,7 +262,7 @@ where
                     release();
                 }
             })
-            .buffer_unordered(BACKFILL_CONCURRENCY)
+            .buffer_unordered(concurrency)
             .collect::<()>()
             .await;
     }

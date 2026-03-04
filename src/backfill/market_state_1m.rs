@@ -53,6 +53,13 @@ impl MarketState1mSource {
 impl PartitionedSource for MarketState1mSource {
     type Key = MarketState1mHourKey;
 
+    /// Run only 2 partitions concurrently — each one fires 2 QuestDB SELECT
+    /// queries plus an ILP write, so the default of 8 would issue 16
+    /// simultaneous reads and overwhelm a small QuestDB instance.
+    fn concurrency() -> usize {
+        2
+    }
+
     async fn partition_exists(
         db: &QuestDbClient,
         key: &MarketState1mHourKey,
