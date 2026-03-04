@@ -1,327 +1,489 @@
 {
   "questdb_addr": "questdb.bounteer.com:9000",
   "tables": {
-    "hyperliquid_fill": {
+    "market_state_1m": {
       "columns": [
         {
-          "column": "ts",
           "type": "TIMESTAMP",
+          "symbolCapacity": 0,
+          "symbolTableSize": 0,
           "designated": true,
-          "upsertKey": false,
-          "indexed": false,
+          "column": "ts",
           "indexBlockCapacity": 0,
+          "upsertKey": false,
           "symbolCached": false,
-          "symbolCapacity": 0,
-          "symbolTableSize": 0
+          "indexed": false
         },
         {
+          "symbolCached": true,
+          "type": "SYMBOL",
           "column": "coin",
-          "type": "SYMBOL",
-          "designated": false,
-          "upsertKey": false,
-          "indexed": false,
-          "indexBlockCapacity": 256,
-          "symbolCached": true,
           "symbolCapacity": 256,
-          "symbolTableSize": 0
-        },
-        {
-          "column": "wallet",
-          "type": "SYMBOL",
+          "symbolTableSize": 0,
           "designated": false,
-          "upsertKey": false,
-          "indexed": false,
           "indexBlockCapacity": 256,
-          "symbolCached": true,
-          "symbolCapacity": 256,
-          "symbolTableSize": 0
-        },
-        {
-          "column": "side",
-          "type": "SYMBOL",
-          "designated": false,
-          "upsertKey": false,
           "indexed": false,
-          "indexBlockCapacity": 256,
-          "symbolCached": true,
-          "symbolCapacity": 256,
-          "symbolTableSize": 0
+          "upsertKey": false
         },
         {
-          "column": "category",
-          "type": "SYMBOL",
-          "designated": false,
-          "upsertKey": false,
-          "indexed": false,
-          "indexBlockCapacity": 256,
-          "symbolCached": true,
-          "symbolCapacity": 256,
-          "symbolTableSize": 0
-        },
-        {
-          "column": "is_taker",
-          "type": "BOOLEAN",
-          "designated": false,
-          "upsertKey": false,
-          "indexed": false,
-          "indexBlockCapacity": 0,
-          "symbolCached": false,
-          "symbolCapacity": 0,
-          "symbolTableSize": 0
-        },
-        {
-          "column": "price",
+          "symbolTableSize": 0,
           "type": "DOUBLE",
           "designated": false,
-          "upsertKey": false,
-          "indexed": false,
-          "indexBlockCapacity": 0,
-          "symbolCached": false,
           "symbolCapacity": 0,
-          "symbolTableSize": 0
+          "upsertKey": false,
+          "indexBlockCapacity": 0,
+          "indexed": false,
+          "column": "price_oracle",
+          "symbolCached": false
         },
         {
-          "column": "quantity",
+          "symbolCached": false,
+          "indexed": false,
+          "indexBlockCapacity": 0,
+          "column": "price_mark",
+          "symbolCapacity": 0,
+          "symbolTableSize": 0,
+          "designated": false,
           "type": "DOUBLE",
-          "designated": false,
-          "upsertKey": false,
-          "indexed": false,
-          "indexBlockCapacity": 0,
-          "symbolCached": false,
-          "symbolCapacity": 0,
-          "symbolTableSize": 0
+          "upsertKey": false
         },
         {
-          "column": "position_before",
+          "symbolTableSize": 0,
+          "designated": false,
           "type": "DOUBLE",
-          "designated": false,
-          "upsertKey": false,
-          "indexed": false,
-          "indexBlockCapacity": 0,
           "symbolCached": false,
+          "indexBlockCapacity": 0,
+          "column": "price_mid",
+          "indexed": false,
           "symbolCapacity": 0,
-          "symbolTableSize": 0
+          "upsertKey": false
         },
         {
-          "column": "realized_pnl",
           "type": "DOUBLE",
-          "designated": false,
-          "upsertKey": false,
-          "indexed": false,
           "indexBlockCapacity": 0,
           "symbolCached": false,
+          "designated": false,
+          "indexed": false,
           "symbolCapacity": 0,
+          "upsertKey": false,
+          "column": "open_interest",
           "symbolTableSize": 0
         },
         {
-          "column": "source",
-          "type": "SYMBOL",
+          "designated": false,
+          "type": "DOUBLE",
+          "symbolCapacity": 0,
+          "symbolTableSize": 0,
+          "column": "funding_rate",
+          "indexed": false,
+          "symbolCached": false,
+          "upsertKey": false,
+          "indexBlockCapacity": 0
+        },
+        {
+          "symbolTableSize": 0,
+          "type": "DOUBLE",
+          "indexed": false,
+          "upsertKey": false,
+          "symbolCached": false,
+          "designated": false,
+          "symbolCapacity": 0,
+          "column": "volume_24h_usd",
+          "indexBlockCapacity": 0
+        },
+        {
+          "symbolTableSize": 0,
+          "symbolCached": false,
+          "indexBlockCapacity": 0,
+          "type": "DOUBLE",
+          "column": "trade_volume",
+          "indexed": false,
           "designated": false,
           "upsertKey": false,
+          "symbolCapacity": 0
+        },
+        {
+          "designated": false,
+          "indexBlockCapacity": 0,
           "indexed": false,
-          "indexBlockCapacity": 256,
-          "symbolCached": true,
-          "symbolCapacity": 256,
-          "symbolTableSize": 0
+          "symbolCached": false,
+          "upsertKey": false,
+          "symbolCapacity": 0,
+          "column": "trade_count",
+          "symbolTableSize": 0,
+          "type": "LONG"
+        },
+        {
+          "designated": false,
+          "symbolCached": false,
+          "upsertKey": false,
+          "type": "DOUBLE",
+          "indexed": false,
+          "column": "liquidation_long_volume",
+          "symbolTableSize": 0,
+          "symbolCapacity": 0,
+          "indexBlockCapacity": 0
+        },
+        {
+          "symbolCapacity": 0,
+          "type": "DOUBLE",
+          "upsertKey": false,
+          "symbolTableSize": 0,
+          "designated": false,
+          "column": "liquidation_short_volume",
+          "symbolCached": false,
+          "indexed": false,
+          "indexBlockCapacity": 0
+        },
+        {
+          "indexed": false,
+          "indexBlockCapacity": 0,
+          "symbolCached": false,
+          "designated": false,
+          "column": "liquidation_long_count",
+          "type": "LONG",
+          "symbolCapacity": 0,
+          "symbolTableSize": 0,
+          "upsertKey": false
+        },
+        {
+          "type": "LONG",
+          "upsertKey": false,
+          "indexBlockCapacity": 0,
+          "symbolTableSize": 0,
+          "column": "liquidation_short_count",
+          "designated": false,
+          "symbolCached": false,
+          "indexed": false,
+          "symbolCapacity": 0
         }
       ]
     },
-    "l2_orderbook": {
+    "candidate_serp_data": {
       "columns": [
         {
-          "column": "ts",
-          "type": "TIMESTAMP",
+          "indexBlockCapacity": 0,
           "designated": true,
-          "upsertKey": false,
-          "indexed": false,
-          "indexBlockCapacity": 0,
-          "symbolCached": false,
+          "column": "ts",
           "symbolCapacity": 0,
-          "symbolTableSize": 0
+          "type": "TIMESTAMP",
+          "symbolCached": false,
+          "indexed": false,
+          "symbolTableSize": 0,
+          "upsertKey": false
         },
         {
+          "symbolCapacity": 4096,
+          "column": "handle",
+          "symbolCached": true,
+          "indexBlockCapacity": 256,
+          "indexed": false,
+          "type": "SYMBOL",
+          "symbolTableSize": 2472,
+          "designated": false,
+          "upsertKey": false
+        },
+        {
+          "designated": false,
           "column": "source",
-          "type": "SYMBOL",
-          "designated": false,
-          "upsertKey": false,
           "indexed": false,
-          "indexBlockCapacity": 256,
-          "symbolCached": true,
           "symbolCapacity": 256,
-          "symbolTableSize": 0
-        },
-        {
-          "column": "ticker",
-          "type": "SYMBOL",
-          "designated": false,
-          "upsertKey": false,
-          "indexed": false,
-          "indexBlockCapacity": 256,
           "symbolCached": true,
-          "symbolCapacity": 256,
-          "symbolTableSize": 0
-        },
-        {
-          "column": "side",
           "type": "SYMBOL",
-          "designated": false,
+          "symbolTableSize": 1,
           "upsertKey": false,
-          "indexed": false,
-          "indexBlockCapacity": 256,
-          "symbolCached": true,
-          "symbolCapacity": 256,
-          "symbolTableSize": 0
+          "indexBlockCapacity": 256
         },
         {
-          "column": "level",
-          "type": "INT",
-          "designated": false,
           "upsertKey": false,
+          "designated": false,
+          "column": "title",
           "indexed": false,
-          "indexBlockCapacity": 0,
           "symbolCached": false,
-          "symbolCapacity": 0,
-          "symbolTableSize": 0
+          "symbolTableSize": 0,
+          "indexBlockCapacity": 0,
+          "type": "STRING",
+          "symbolCapacity": 0
         },
         {
-          "column": "price",
-          "type": "DOUBLE",
+          "symbolCached": false,
+          "type": "STRING",
+          "symbolTableSize": 0,
+          "indexBlockCapacity": 0,
           "designated": false,
           "upsertKey": false,
-          "indexed": false,
-          "indexBlockCapacity": 0,
-          "symbolCached": false,
+          "column": "subtitle",
           "symbolCapacity": 0,
-          "symbolTableSize": 0
+          "indexed": false
         },
         {
-          "column": "quantity",
-          "type": "DOUBLE",
+          "type": "STRING",
+          "indexed": false,
+          "symbolTableSize": 0,
           "designated": false,
           "upsertKey": false,
-          "indexed": false,
-          "indexBlockCapacity": 0,
+          "column": "snippet",
           "symbolCached": false,
-          "symbolCapacity": 0,
-          "symbolTableSize": 0
+          "indexBlockCapacity": 0,
+          "symbolCapacity": 0
         }
       ]
     },
     "market_signal": {
       "columns": [
         {
-          "column": "ts",
-          "type": "TIMESTAMP",
-          "designated": true,
-          "upsertKey": false,
           "indexed": false,
+          "symbolCached": false,
+          "indexBlockCapacity": 0,
+          "column": "ts",
+          "designated": true,
+          "symbolCapacity": 0,
+          "symbolTableSize": 0,
+          "upsertKey": false,
+          "type": "TIMESTAMP"
+        },
+        {
+          "symbolTableSize": 0,
+          "designated": false,
+          "indexed": false,
+          "symbolCached": true,
+          "upsertKey": false,
+          "type": "SYMBOL",
+          "column": "category",
+          "symbolCapacity": 256,
+          "indexBlockCapacity": 256
+        },
+        {
+          "indexed": false,
+          "column": "ticker",
+          "symbolCached": true,
+          "upsertKey": false,
+          "type": "SYMBOL",
+          "indexBlockCapacity": 256,
+          "symbolCapacity": 256,
+          "symbolTableSize": 0,
+          "designated": false
+        },
+        {
+          "symbolCached": true,
+          "symbolCapacity": 256,
+          "type": "SYMBOL",
+          "column": "source",
+          "indexed": false,
+          "symbolTableSize": 0,
+          "designated": false,
+          "upsertKey": false,
+          "indexBlockCapacity": 256
+        },
+        {
+          "type": "SYMBOL",
+          "upsertKey": false,
+          "column": "value",
+          "symbolCapacity": 256,
+          "symbolTableSize": 0,
+          "symbolCached": true,
+          "designated": false,
+          "indexBlockCapacity": 256,
+          "indexed": false
+        }
+      ]
+    },
+    "market_event": {
+      "columns": [
+        {
           "indexBlockCapacity": 0,
           "symbolCached": false,
+          "designated": true,
+          "type": "TIMESTAMP",
           "symbolCapacity": 0,
-          "symbolTableSize": 0
+          "upsertKey": false,
+          "symbolTableSize": 0,
+          "column": "ts",
+          "indexed": false
         },
         {
           "column": "category",
           "type": "SYMBOL",
-          "designated": false,
-          "upsertKey": false,
           "indexed": false,
           "indexBlockCapacity": 256,
-          "symbolCached": true,
           "symbolCapacity": 256,
-          "symbolTableSize": 0
+          "symbolTableSize": 2,
+          "upsertKey": false,
+          "designated": false,
+          "symbolCached": true
         },
         {
+          "indexBlockCapacity": 256,
+          "upsertKey": false,
+          "type": "SYMBOL",
+          "symbolCached": true,
+          "indexed": false,
+          "symbolTableSize": 29,
+          "symbolCapacity": 256,
           "column": "ticker",
-          "type": "SYMBOL",
-          "designated": false,
-          "upsertKey": false,
-          "indexed": false,
-          "indexBlockCapacity": 256,
-          "symbolCached": true,
-          "symbolCapacity": 256,
-          "symbolTableSize": 0
+          "designated": false
         },
         {
+          "symbolCached": true,
+          "type": "SYMBOL",
+          "symbolCapacity": 256,
           "column": "source",
-          "type": "SYMBOL",
+          "symbolTableSize": 1,
           "designated": false,
-          "upsertKey": false,
-          "indexed": false,
           "indexBlockCapacity": 256,
-          "symbolCached": true,
-          "symbolCapacity": 256,
-          "symbolTableSize": 0
+          "indexed": false,
+          "upsertKey": false
         },
         {
-          "column": "value",
-          "type": "SYMBOL",
           "designated": false,
+          "indexBlockCapacity": 0,
+          "column": "is_rising",
           "upsertKey": false,
+          "type": "BOOLEAN",
+          "symbolCached": false,
+          "symbolTableSize": 0,
           "indexed": false,
-          "indexBlockCapacity": 256,
-          "symbolCached": true,
-          "symbolCapacity": 256,
-          "symbolTableSize": 0
+          "symbolCapacity": 0
         }
       ]
     },
     "market_data": {
       "columns": [
         {
-          "column": "ts",
-          "type": "TIMESTAMP",
           "designated": true,
           "upsertKey": false,
-          "indexed": false,
           "indexBlockCapacity": 0,
+          "type": "TIMESTAMP",
           "symbolCached": false,
           "symbolCapacity": 0,
+          "indexed": false,
+          "column": "ts",
           "symbolTableSize": 0
         },
         {
-          "column": "category",
-          "type": "SYMBOL",
+          "symbolCapacity": 256,
           "designated": false,
+          "column": "category",
+          "symbolTableSize": 16,
+          "indexBlockCapacity": 256,
           "upsertKey": false,
           "indexed": false,
-          "indexBlockCapacity": 256,
           "symbolCached": true,
-          "symbolCapacity": 256,
-          "symbolTableSize": 16
+          "type": "SYMBOL"
         },
         {
-          "column": "ticker",
-          "type": "SYMBOL",
-          "designated": false,
-          "upsertKey": false,
           "indexed": false,
+          "designated": false,
+          "symbolTableSize": 225,
+          "symbolCapacity": 512,
+          "upsertKey": false,
+          "type": "SYMBOL",
+          "column": "ticker",
           "indexBlockCapacity": 256,
+          "symbolCached": true
+        },
+        {
           "symbolCached": true,
-          "symbolCapacity": 256,
-          "symbolTableSize": 225
+          "symbolTableSize": 3,
+          "designated": false,
+          "type": "SYMBOL",
+          "indexBlockCapacity": 256,
+          "indexed": false,
+          "upsertKey": false,
+          "column": "source",
+          "symbolCapacity": 256
+        },
+        {
+          "column": "value",
+          "symbolTableSize": 0,
+          "indexed": false,
+          "type": "DOUBLE",
+          "symbolCached": false,
+          "symbolCapacity": 0,
+          "designated": false,
+          "indexBlockCapacity": 0,
+          "upsertKey": false
+        }
+      ]
+    },
+    "l2_orderbook": {
+      "columns": [
+        {
+          "symbolCapacity": 0,
+          "symbolTableSize": 0,
+          "upsertKey": false,
+          "column": "ts",
+          "indexed": false,
+          "indexBlockCapacity": 0,
+          "type": "TIMESTAMP",
+          "symbolCached": false,
+          "designated": true
         },
         {
           "column": "source",
           "type": "SYMBOL",
-          "designated": false,
-          "upsertKey": false,
-          "indexed": false,
-          "indexBlockCapacity": 256,
           "symbolCached": true,
+          "symbolTableSize": 1,
+          "indexed": false,
+          "designated": false,
           "symbolCapacity": 256,
-          "symbolTableSize": 3
+          "upsertKey": false,
+          "indexBlockCapacity": 256
         },
         {
-          "column": "value",
-          "type": "DOUBLE",
+          "type": "SYMBOL",
+          "indexed": false,
+          "symbolCached": true,
+          "column": "ticker",
+          "symbolCapacity": 256,
           "designated": false,
           "upsertKey": false,
+          "symbolTableSize": 1,
+          "indexBlockCapacity": 256
+        },
+        {
+          "upsertKey": false,
+          "symbolCached": true,
+          "symbolCapacity": 256,
+          "indexed": false,
+          "column": "side",
+          "symbolTableSize": 2,
+          "designated": false,
+          "indexBlockCapacity": 256,
+          "type": "SYMBOL"
+        },
+        {
+          "designated": false,
+          "indexBlockCapacity": 0,
+          "upsertKey": false,
+          "column": "level",
+          "type": "INT",
+          "indexed": false,
+          "symbolCached": false,
+          "symbolTableSize": 0,
+          "symbolCapacity": 0
+        },
+        {
+          "indexBlockCapacity": 0,
+          "symbolCapacity": 0,
+          "symbolTableSize": 0,
+          "designated": false,
+          "symbolCached": false,
+          "type": "DOUBLE",
+          "upsertKey": false,
+          "column": "price",
+          "indexed": false
+        },
+        {
+          "symbolTableSize": 0,
+          "symbolCached": false,
+          "upsertKey": false,
+          "symbolCapacity": 0,
           "indexed": false,
           "indexBlockCapacity": 0,
-          "symbolCached": false,
-          "symbolCapacity": 0,
-          "symbolTableSize": 0
+          "designated": false,
+          "column": "quantity",
+          "type": "DOUBLE"
         }
       ]
     },
@@ -329,128 +491,69 @@
       "columns": [
         {
           "column": "ts",
-          "type": "TIMESTAMP",
-          "designated": true,
-          "upsertKey": false,
-          "indexed": false,
-          "indexBlockCapacity": 0,
-          "symbolCached": false,
           "symbolCapacity": 0,
-          "symbolTableSize": 0
+          "indexed": false,
+          "symbolCached": false,
+          "designated": true,
+          "indexBlockCapacity": 0,
+          "type": "TIMESTAMP",
+          "symbolTableSize": 0,
+          "upsertKey": false
         },
         {
+          "indexed": false,
+          "indexBlockCapacity": 256,
+          "designated": false,
+          "symbolCached": true,
+          "symbolCapacity": 1024,
+          "symbolTableSize": 543,
           "column": "coin",
           "type": "SYMBOL",
-          "designated": false,
-          "upsertKey": false,
-          "indexed": false,
-          "indexBlockCapacity": 256,
-          "symbolCached": true,
-          "symbolCapacity": 256,
-          "symbolTableSize": 0
+          "upsertKey": false
         },
         {
+          "indexBlockCapacity": 256,
+          "symbolTableSize": 18,
+          "upsertKey": false,
+          "symbolCapacity": 256,
           "column": "category",
-          "type": "SYMBOL",
-          "designated": false,
-          "upsertKey": false,
-          "indexed": false,
-          "indexBlockCapacity": 256,
           "symbolCached": true,
-          "symbolCapacity": 256,
-          "symbolTableSize": 0
+          "designated": false,
+          "type": "SYMBOL",
+          "indexed": false
         },
         {
+          "symbolCached": false,
+          "designated": false,
+          "symbolCapacity": 0,
+          "symbolTableSize": 0,
+          "indexed": false,
+          "indexBlockCapacity": 0,
           "column": "buy_side",
           "type": "BOOLEAN",
-          "designated": false,
-          "upsertKey": false,
-          "indexed": false,
-          "indexBlockCapacity": 0,
-          "symbolCached": false,
-          "symbolCapacity": 0,
-          "symbolTableSize": 0
+          "upsertKey": false
         },
         {
-          "column": "quantity",
+          "designated": false,
+          "symbolTableSize": 0,
+          "symbolCapacity": 0,
+          "upsertKey": false,
           "type": "DOUBLE",
-          "designated": false,
-          "upsertKey": false,
-          "indexed": false,
           "indexBlockCapacity": 0,
           "symbolCached": false,
-          "symbolCapacity": 0,
-          "symbolTableSize": 0
+          "column": "quantity",
+          "indexed": false
         },
         {
-          "column": "trade_count",
+          "designated": false,
+          "upsertKey": false,
+          "indexBlockCapacity": 0,
+          "indexed": false,
+          "symbolCached": false,
+          "symbolCapacity": 0,
+          "symbolTableSize": 0,
           "type": "LONG",
-          "designated": false,
-          "upsertKey": false,
-          "indexed": false,
-          "indexBlockCapacity": 0,
-          "symbolCached": false,
-          "symbolCapacity": 0,
-          "symbolTableSize": 0
-        }
-      ]
-    },
-    "market_event": {
-      "columns": [
-        {
-          "column": "ts",
-          "type": "TIMESTAMP",
-          "designated": true,
-          "upsertKey": false,
-          "indexed": false,
-          "indexBlockCapacity": 0,
-          "symbolCached": false,
-          "symbolCapacity": 0,
-          "symbolTableSize": 0
-        },
-        {
-          "column": "category",
-          "type": "SYMBOL",
-          "designated": false,
-          "upsertKey": false,
-          "indexed": false,
-          "indexBlockCapacity": 256,
-          "symbolCached": true,
-          "symbolCapacity": 256,
-          "symbolTableSize": 2
-        },
-        {
-          "column": "ticker",
-          "type": "SYMBOL",
-          "designated": false,
-          "upsertKey": false,
-          "indexed": false,
-          "indexBlockCapacity": 256,
-          "symbolCached": true,
-          "symbolCapacity": 256,
-          "symbolTableSize": 29
-        },
-        {
-          "column": "source",
-          "type": "SYMBOL",
-          "designated": false,
-          "upsertKey": false,
-          "indexed": false,
-          "indexBlockCapacity": 256,
-          "symbolCached": true,
-          "symbolCapacity": 256,
-          "symbolTableSize": 1
-        },
-        {
-          "column": "is_rising",
-          "type": "BOOLEAN",
-          "designated": false,
-          "upsertKey": false,
-          "indexed": false,
-          "indexBlockCapacity": 0,
-          "symbolCached": false,
-          "symbolCapacity": 0,
-          "symbolTableSize": 0
+          "column": "trade_count"
         }
       ]
     }

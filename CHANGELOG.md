@@ -1,6 +1,18 @@
 # [signal](./README.md) changelog
 > [TODO](./src/README.md)
 
+## [0.11.0] — 2026-03-04
+### Added
+- `MarketState1m` backfill source — computes `market_state_1m` (1-minute wide rows) from
+  `hyperliquid_fill_1m_aggregate` and `market_data` with no S3 access required
+  - `trade_volume` / `trade_count` count buy-side fills only (buy/sell pairs cancel out)
+  - Liquidation stats split by long/short via categories `Liquidated Isolated/Cross Long/Short`
+  - Price/market fields (`price_oracle`, `price_mark`, `price_mid`, `open_interest`,
+    `funding_rate`, `volume_24h_usd`) carried from the day's `market_data` snapshot
+- `MarketStateRow` struct + `insert_market_state_1m()` writer in `database/mod.rs`
+- Fixed missing `node_fills_legacy_1m_aggregate` backfill module (was wired in `endpoint.rs`
+  but never created); `HyperliquidNodeFillsLegacy1mAggregate` source now works end-to-end
+
 ## [0.10.0] — 2026-02-28
 ### Added
 - `GET /database` endpoint — returns name, row count, and disk usage (bytes) for every QuestDB table

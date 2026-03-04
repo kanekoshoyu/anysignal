@@ -1,8 +1,10 @@
 pub mod asset_ctxs;
 pub mod l2_orderbook;
+pub mod market_state_1m;
 pub mod node_fills;
 pub mod node_fills_1m_aggregate;
 pub mod node_fills_by_block;
+pub mod node_fills_legacy_1m_aggregate;
 pub mod tracker;
 
 use crate::adapter::error::AdapterError;

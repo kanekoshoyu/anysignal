@@ -91,6 +91,7 @@ This makes it incompatible with the fill-level schema — **coverage gap: 2025-0
 | `HyperliquidNodeFillsLegacy1mAggregate` | hourly | `hyperliquid_fill_1m_aggregate` | 2025-05-25T14:00 | 2025-07-27T08:00 |
 | `HyperliquidNodeFills` | hourly | `hyperliquid_fill` | 2025-07-27T08:00 | present |
 | `HyperliquidNodeFills1mAggregate` | hourly | `hyperliquid_fill_1m_aggregate` | 2025-07-27 | present |
+| `MarketState1m` | hourly | `market_state_1m` | 2025-05-25T14:00 | present |
 
 ### `/database` response fields
 | Field | Description |
@@ -152,6 +153,28 @@ CREATE TABLE hyperliquid_fill_1m_aggregate (
     buy_side    BOOLEAN,
     quantity    DOUBLE,
     trade_count LONG
+) timestamp(ts) PARTITION BY DAY;
+
+-- ts is the LEFT-CLOSED WINDOW START (same as hyperliquid_fill_1m_aggregate).
+-- Computed by MarketState1m backfill source from market_data + hyperliquid_fill_1m_aggregate.
+-- Liquidation categories: 'Liquidated Isolated Long', 'Liquidated Cross Long',
+--                         'Liquidated Isolated Short', 'Liquidated Cross Short'
+-- trade_volume / trade_count count buy-side fills only (buy/sell pairs cancel out).
+CREATE TABLE market_state_1m (
+    ts                       TIMESTAMP,  -- left-closed minute bucket
+    coin                     SYMBOL,
+    price_oracle             DOUBLE,     -- from market_data.oracle_px (daily snapshot)
+    price_mark               DOUBLE,     -- from market_data.mark_px (daily snapshot)
+    price_mid                DOUBLE,     -- market_data.mid_px or (oracle+mark)/2
+    open_interest            DOUBLE,     -- from market_data.open_interest
+    funding_rate             DOUBLE,     -- from market_data.funding
+    volume_24h_usd           DOUBLE,     -- from market_data.day_ntl_vlm
+    trade_volume             DOUBLE,     -- sum of buy-side fill quantities
+    trade_count              LONG,       -- count of buy-side fills
+    liquidation_long_volume  DOUBLE,
+    liquidation_short_volume DOUBLE,
+    liquidation_long_count   LONG,
+    liquidation_short_count  LONG
 ) timestamp(ts) PARTITION BY DAY;
 ```
 

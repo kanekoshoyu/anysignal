@@ -433,6 +433,92 @@ pub fn insert_hyperliquid_fills(sender: &mut Sender, fills: &[ParsedFill]) -> Qu
 }
 
 // ---------------------------------------------------------------------------
+// Market state 1-minute row
+// ---------------------------------------------------------------------------
+
+/// One row in `market_state_1m`.
+///
+/// All price / market fields come from `market_data` (daily snapshot carried
+/// forward for all 1-minute buckets in that day).
+/// Fill-derived fields come from `hyperliquid_fill_1m_aggregate`.
+#[derive(Debug)]
+pub struct MarketStateRow {
+    /// Left-closed minute bucket start, Unix milliseconds.
+    pub minute_ms: i64,
+    pub coin: String,
+    /// Oracle price from `market_data.oracle_px`.
+    pub price_oracle: f64,
+    /// Mark price from `market_data.mark_px`.
+    pub price_mark: f64,
+    /// Mid price — `market_data.mid_px` when present, else `(oracle + mark) / 2`.
+    pub price_mid: f64,
+    /// Open interest from `market_data.open_interest`.
+    pub open_interest: f64,
+    /// Funding rate from `market_data.funding`.
+    pub funding_rate: f64,
+    /// 24-hour notional volume from `market_data.day_ntl_vlm`.
+    pub volume_24h_usd: f64,
+    /// Sum of fill quantities (buy side only — buys/sells are paired).
+    pub trade_volume: f64,
+    /// Number of individual fills (buy side only).
+    pub trade_count: i64,
+    /// Sum of liquidated long fill quantities.
+    pub liquidation_long_volume: f64,
+    /// Sum of liquidated short fill quantities.
+    pub liquidation_short_volume: f64,
+    /// Number of liquidated long fills.
+    pub liquidation_long_count: i64,
+    /// Number of liquidated short fills.
+    pub liquidation_short_count: i64,
+}
+
+// ---------------------------------------------------------------------------
+// Market state 1-minute ingestion
+// ---------------------------------------------------------------------------
+
+/// Batch-insert [`MarketStateRow`]s into the `market_state_1m` table.
+///
+/// The buffer is flushed automatically at [`BUFFER_FLUSH_THRESHOLD`].
+/// Returns the total number of rows written.
+pub fn insert_market_state_1m(sender: &mut Sender, rows: &[MarketStateRow]) -> QuestResult<usize> {
+    let mut buffer = Buffer::new();
+    let mut count: usize = 0;
+
+    for row in rows {
+        let ts_us = TimestampMicros::new(row.minute_ms * 1_000); // ms → µs
+
+        buffer
+            .table("market_state_1m")?
+            .symbol("coin", &row.coin)?
+            .column_f64("price_oracle", row.price_oracle)?
+            .column_f64("price_mark", row.price_mark)?
+            .column_f64("price_mid", row.price_mid)?
+            .column_f64("open_interest", row.open_interest)?
+            .column_f64("funding_rate", row.funding_rate)?
+            .column_f64("volume_24h_usd", row.volume_24h_usd)?
+            .column_f64("trade_volume", row.trade_volume)?
+            .column_i64("trade_count", row.trade_count)?
+            .column_f64("liquidation_long_volume", row.liquidation_long_volume)?
+            .column_f64("liquidation_short_volume", row.liquidation_short_volume)?
+            .column_i64("liquidation_long_count", row.liquidation_long_count)?
+            .column_i64("liquidation_short_count", row.liquidation_short_count)?
+            .at(ts_us)?;
+
+        count += 1;
+
+        if buffer.len() >= BUFFER_FLUSH_THRESHOLD {
+            sender.flush(&mut buffer)?;
+        }
+    }
+
+    if !buffer.is_empty() {
+        sender.flush(&mut buffer)?;
+    }
+
+    Ok(count)
+}
+
+// ---------------------------------------------------------------------------
 // Hyperliquid 1-minute aggregate ingestion
 // ---------------------------------------------------------------------------
 

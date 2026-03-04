@@ -1,11 +1,13 @@
 use crate::backfill::asset_ctxs::AssetCtxsSource;
 use crate::backfill::l2_orderbook::{L2PartitionKey, L2SnapshotSource};
+use crate::backfill::market_state_1m::{MarketState1mHourKey, MarketState1mSource};
 use crate::backfill::node_fills::{NodeFillsLegacyHourKey, NodeFillsLegacySource};
 use crate::backfill::node_fills_1m_aggregate::{NodeFills1mAggregateHourKey, NodeFills1mAggregateSource};
 use crate::backfill::node_fills_by_block::{NodeFillsHourKey, NodeFillsSource};
 use crate::backfill::node_fills_legacy_1m_aggregate::{NodeFillsLegacy1mAggregateHourKey, NodeFillsLegacy1mAggregateSource};
 use crate::backfill::run_backfill;
 use crate::backfill::tracker::BackfillTracker;
+use crate::backfill::PartitionedSource;
 use crate::config::Config;
 use crate::database::QuestDbClient;
 use crate::metadata::cargo_package_version;
@@ -111,6 +113,20 @@ enum BackfillSource {
     ///
     /// **Data available from:** `2025-05-25T14:00:00` **to** `2025-07-27T08:00:00`
     HyperliquidNodeFillsLegacy1mAggregate,
+
+    /// Compute `market_state_1m` by joining `hyperliquid_fill_1m_aggregate`
+    /// (minute-level fill stats) with `market_data` (daily price/market
+    /// snapshots).  No S3 access — pure DB-to-DB computation.
+    ///
+    /// Per minute bucket and coin the row contains:
+    /// - `price_oracle`, `price_mark`, `price_mid` — from `market_data` daily snapshot
+    /// - `open_interest`, `funding_rate`, `volume_24h_usd` — from `market_data` daily snapshot
+    /// - `trade_volume`, `trade_count` — buy-side fills only (pairs cancel out)
+    /// - `liquidation_long/short_volume/count` — fills with category in
+    ///   (`Liquidated Isolated Long`, `Liquidated Cross Long`, …Short)
+    ///
+    /// Both source tables must be backfilled for the requested range first.
+    MarketState1m,
 }
 
 /// Per-run summary returned by `GET /backfill`.
@@ -194,6 +210,47 @@ enum DatabaseApiResponse {
 }
 
 // ---------------------------------------------------------------------------
+// Coverage types
+// ---------------------------------------------------------------------------
+
+/// One contiguous range of missing partitions (both bounds inclusive).
+#[derive(Debug, Object)]
+struct CoverageGap {
+    /// First missing partition key, e.g. `"2025-07-28T12:00:00"`.
+    from: String,
+    /// Last missing partition key, e.g. `"2025-07-28T14:00:00"`.
+    to: String,
+}
+
+/// Response for `GET /coverage`.
+#[derive(Debug, Object)]
+struct CoverageResult {
+    source: String,
+    /// Requested range start.
+    from: String,
+    /// Requested range end.
+    to: String,
+    /// Total number of partition keys in the requested range.
+    total_partitions: u64,
+    /// Number of partitions present in QuestDB.
+    present_count: u64,
+    /// Number of partitions missing from QuestDB.
+    missing_count: u64,
+    /// Contiguous ranges of missing partitions (from/to both inclusive).
+    gaps: Vec<CoverageGap>,
+}
+
+#[derive(ApiResponse)]
+enum CoverageApiResponse {
+    #[oai(status = 200)]
+    Ok(Json<CoverageResult>),
+    #[oai(status = 400)]
+    BadRequest(PlainText<String>),
+    #[oai(status = 500)]
+    InternalError(PlainText<String>),
+}
+
+// ---------------------------------------------------------------------------
 // Endpoints
 // ---------------------------------------------------------------------------
 
@@ -249,6 +306,7 @@ impl Endpoint {
     /// | `HyperliquidNodeFillsLegacy1mAggregate`   | hourly | `hyperliquid_fill_1m_aggregate`  | 2025-05-25T14:00:00    | 2025-07-27T08:00:00    | —                  |
     /// | `HyperliquidNodeFills`                    | hourly | `hyperliquid_fill`               | 2025-07-27T08:00:00    | present                | —                  |
     /// | `HyperliquidNodeFills1mAggregate`         | hourly | `hyperliquid_fill_1m_aggregate`  | 2025-07-27             | present                | —                  |
+    /// | `MarketState1m`                           | hourly | `market_state_1m`                | 2025-05-25T14:00:00    | present                | —                  |
     ///
     /// **Coverage gap in `hyperliquid_fill`:** `2025-03-22T10:00` – `2025-05-25T13:00` is covered
     /// by the `node_trades` S3 dataset (`node_trades/hourly/`), which uses a trade-level schema
@@ -495,6 +553,28 @@ impl Endpoint {
                     Err(msg) => BackfillApiResponse::InternalError(PlainText(msg)),
                 }
             }
+
+            BackfillSource::MarketState1m => {
+                let source = MarketState1mSource::new();
+
+                // Build hour-by-hour key iterator.
+                // Requires hyperliquid_fill_1m_aggregate and market_data to be
+                // backfilled for the requested range first.
+                let keys = {
+                    let mut keys = Vec::new();
+                    let mut current = from.date().and_hms_opt(from.hour(), 0, 0).unwrap_or(from);
+                    while current <= to {
+                        keys.push(MarketState1mHourKey { hour: current });
+                        current += chrono::Duration::hours(1);
+                    }
+                    keys
+                };
+
+                match run_backfill(&source, &db, keys, force, Some((&self.tracker, "MarketState1m"))).await {
+                    Ok(stats) => BackfillApiResponse::Ok(Json(stats.into())),
+                    Err(msg) => BackfillApiResponse::InternalError(PlainText(msg)),
+                }
+            }
         }
     }
 
@@ -564,6 +644,145 @@ impl Endpoint {
             total_disk_size_bytes,
         }))
     }
+
+    /// Check which partitions are present or missing in QuestDB for a source and date range.
+    ///
+    /// Iterates the same partition keys as `GET /backfill` and tests each one against
+    /// QuestDB.  Returns a list of contiguous **gaps** (missing ranges), plus summary
+    /// counts.  The `from`/`to` in each gap are the first and last missing partition
+    /// key labels (both inclusive), using the same format as the source's partition key
+    /// (hourly: `"YYYY-MM-DDTHH:00:00"`, daily: `"YYYY-MM-DD"`).
+    ///
+    /// Useful for auditing coverage before or after a backfill run.
+    ///
+    /// The `source` parameter accepts the same values as `GET /backfill`.
+    /// `coins` is required for `HyperliquidL2Orderbook`.
+    #[oai(path = "/coverage", method = "get")]
+    async fn coverage(
+        &self,
+        /// Start of the range to check, **inclusive**.
+        from: Query<String>,
+        /// End of the range to check, **inclusive**.
+        to: Query<String>,
+        /// Which data source to check coverage for.
+        source: Query<BackfillSource>,
+        /// Comma-separated coin tickers (required for `HyperliquidL2Orderbook`).
+        coins: Query<Option<String>>,
+    ) -> CoverageApiResponse {
+        let from = match parse_flexible_datetime(&from.0) {
+            Ok(dt) => dt,
+            Err(e) => return CoverageApiResponse::BadRequest(PlainText(e)),
+        };
+        let to = match parse_flexible_datetime(&to.0) {
+            Ok(dt) => dt,
+            Err(e) => return CoverageApiResponse::BadRequest(PlainText(e)),
+        };
+        if from > to {
+            return CoverageApiResponse::BadRequest(PlainText(
+                "'from' must be on or before 'to'.".to_string(),
+            ));
+        }
+
+        let db = match QuestDbClient::new(&self.config) {
+            Ok(c) => c,
+            Err(e) => {
+                return CoverageApiResponse::InternalError(PlainText(format!(
+                    "Failed to connect to QuestDB: {e}"
+                )))
+            }
+        };
+
+        let source_name = format!("{:?}", source.0);
+
+        let checked: Vec<(String, bool)> = match source.0 {
+            BackfillSource::HyperliquidAssetCtxs => {
+                let keys = day_range(from.date(), to.date());
+                check_coverage::<AssetCtxsSource, _>(&db, keys).await
+            }
+
+            BackfillSource::HyperliquidL2Orderbook => {
+                let coin_list: Vec<String> = match coins.0 {
+                    Some(s) if !s.trim().is_empty() => {
+                        s.split(',').map(|c| c.trim().to_uppercase()).collect()
+                    }
+                    _ => {
+                        return CoverageApiResponse::BadRequest(PlainText(
+                            "'coins' is required for HyperliquidL2Orderbook.".to_string(),
+                        ))
+                    }
+                };
+                let keys: Vec<L2PartitionKey> = hour_range(from, to)
+                    .into_iter()
+                    .flat_map(|h| {
+                        coin_list
+                            .iter()
+                            .map(move |c| L2PartitionKey { hour: h, coin: c.clone() })
+                            .collect::<Vec<_>>()
+                    })
+                    .collect();
+                check_coverage::<L2SnapshotSource, _>(&db, keys).await
+            }
+
+            BackfillSource::HyperliquidNodeFills => {
+                let keys = hour_range(from, to)
+                    .into_iter()
+                    .map(|h| NodeFillsHourKey { hour: h })
+                    .collect();
+                check_coverage::<NodeFillsSource, _>(&db, keys).await
+            }
+
+            BackfillSource::HyperliquidNodeFills1mAggregate => {
+                let keys = hour_range(from, to)
+                    .into_iter()
+                    .map(|h| NodeFills1mAggregateHourKey { hour: h })
+                    .collect();
+                check_coverage::<NodeFills1mAggregateSource, _>(&db, keys).await
+            }
+
+            BackfillSource::HyperliquidNodeFillsLegacy => {
+                let keys = hour_range(from, to)
+                    .into_iter()
+                    .map(|h| NodeFillsLegacyHourKey { hour: h })
+                    .collect();
+                check_coverage::<NodeFillsLegacySource, _>(&db, keys).await
+            }
+
+            BackfillSource::HyperliquidNodeFillsLegacy1mAggregate => {
+                let keys = hour_range(from, to)
+                    .into_iter()
+                    .map(|h| NodeFillsLegacy1mAggregateHourKey { hour: h })
+                    .collect();
+                check_coverage::<NodeFillsLegacy1mAggregateSource, _>(&db, keys).await
+            }
+
+            BackfillSource::MarketState1m => {
+                let keys = hour_range(from, to)
+                    .into_iter()
+                    .map(|h| MarketState1mHourKey { hour: h })
+                    .collect();
+                check_coverage::<MarketState1mSource, _>(&db, keys).await
+            }
+        };
+
+        // `checked` arrives in arbitrary order (concurrent checks) — sort by label.
+        let mut checked = checked;
+        checked.sort_unstable_by(|a, b| a.0.cmp(&b.0));
+
+        let total_partitions = checked.len() as u64;
+        let present_count = checked.iter().filter(|(_, p)| *p).count() as u64;
+        let missing_count = total_partitions - present_count;
+        let gaps = merge_gaps(&checked);
+
+        CoverageApiResponse::Ok(Json(CoverageResult {
+            source: source_name,
+            from: from.format("%Y-%m-%dT%H:%M:%S").to_string(),
+            to: to.format("%Y-%m-%dT%H:%M:%S").to_string(),
+            total_partitions,
+            present_count,
+            missing_count,
+            gaps,
+        }))
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -586,4 +805,76 @@ impl From<crate::backfill::BackfillStats> for BackfillResult {
             elapsed_ms: s.elapsed_ms,
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// Coverage helpers
+// ---------------------------------------------------------------------------
+
+/// Build a vec of every calendar day from `start` to `end` (both inclusive).
+fn day_range(start: NaiveDate, end: NaiveDate) -> Vec<NaiveDate> {
+    let mut days = Vec::new();
+    let mut cur = start;
+    while cur <= end {
+        days.push(cur);
+        match cur.succ_opt() {
+            Some(next) => cur = next,
+            None => break,
+        }
+    }
+    days
+}
+
+/// Build a vec of every hour-aligned `NaiveDateTime` from `from` to `to` (both inclusive).
+fn hour_range(from: NaiveDateTime, to: NaiveDateTime) -> Vec<NaiveDateTime> {
+    let mut hours = Vec::new();
+    let mut cur = from.date().and_hms_opt(from.hour(), 0, 0).unwrap_or(from);
+    while cur <= to {
+        hours.push(cur);
+        cur += chrono::Duration::hours(1);
+    }
+    hours
+}
+
+/// Check existence of every key in `keys` against QuestDB concurrently (16 at a time).
+/// Returns `(label, is_present)` pairs in **arbitrary** order.
+async fn check_coverage<S, K>(db: &QuestDbClient, keys: Vec<K>) -> Vec<(String, bool)>
+where
+    S: PartitionedSource<Key = K>,
+    K: crate::backfill::PartitionKey + Send + 'static,
+{
+    use futures::StreamExt as _;
+    futures::stream::iter(keys)
+        .map(|key| async move {
+            let label = key.to_string();
+            let present = S::partition_exists(db, &key).await.unwrap_or(false);
+            (label, present)
+        })
+        .buffer_unordered(16)
+        .collect()
+        .await
+}
+
+/// Merge a sorted `(label, is_present)` slice into contiguous missing ranges.
+fn merge_gaps(sorted: &[(String, bool)]) -> Vec<CoverageGap> {
+    let mut gaps: Vec<CoverageGap> = Vec::new();
+    let mut gap_start: Option<&str> = None;
+    let mut gap_end: Option<&str> = None;
+
+    for (label, present) in sorted {
+        if !present {
+            if gap_start.is_none() {
+                gap_start = Some(label);
+            }
+            gap_end = Some(label);
+        } else if let (Some(start), Some(end)) = (gap_start.take(), gap_end.take()) {
+            gaps.push(CoverageGap { from: start.to_string(), to: end.to_string() });
+            gap_end = None;
+        }
+    }
+    // Close any open gap at the end of the range.
+    if let (Some(start), Some(end)) = (gap_start, gap_end) {
+        gaps.push(CoverageGap { from: start.to_string(), to: end.to_string() });
+    }
+    gaps
 }
