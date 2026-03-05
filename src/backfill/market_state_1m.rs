@@ -36,9 +36,9 @@ impl PartitionKey for MarketState1mHourKey {}
 ///
 /// - `hyperliquid_fill_1m_aggregate` — minute-level fill stats (trade volume,
 ///   trade count, liquidation volumes).
-/// - `market_data` — daily price/market snapshots per coin (oracle/mark price,
-///   open interest, funding rate, 24h volume).  The same day's snapshot is
-///   applied to all minute buckets in the hour.
+/// - `market_data` — per-minute price/market snapshots per coin (oracle/mark
+///   price, open interest, funding rate, 24h volume).  Each minute bucket is
+///   joined to the exact same-minute snapshot from `market_data`.
 ///
 /// No S3 access is required — this is a pure DB-to-DB computation.
 pub struct MarketState1mSource;
@@ -80,10 +80,6 @@ impl PartitionedSource for MarketState1mSource {
         key: &MarketState1mHourKey,
     ) -> AnySignalResult<PartitionStats> {
         let hour_end = key.hour + chrono::Duration::hours(1);
-        let day_start = key.hour.date();
-        let day_end = day_start
-            .succ_opt()
-            .unwrap_or(day_start);
 
         let t_fetch = std::time::Instant::now();
 
@@ -98,14 +94,16 @@ impl PartitionedSource for MarketState1mSource {
         );
         let fill_json = db.query_json(&fill_sql).await?;
 
-        // Fetch daily market snapshots for the calendar day containing this hour.
+        // Fetch per-minute market snapshots for [H, H+1h).
+        // market_data stores minute-level snapshots so we scope to the exact
+        // hour to avoid fetching millions of rows for the whole day.
         let market_sql = format!(
-            "SELECT ticker, category, value \
+            "SELECT ts, ticker, category, value \
              FROM market_data \
-             WHERE ts >= '{}T00:00:00Z' AND ts < '{}T00:00:00Z' \
+             WHERE ts >= '{}Z' AND ts < '{}Z' \
              AND source = 'HYPERLIQUID_S3'",
-            day_start.format("%Y-%m-%d"),
-            day_end.format("%Y-%m-%d"),
+            key.hour.format("%Y-%m-%dT%H:%M:%S"),
+            hour_end.format("%Y-%m-%dT%H:%M:%S"),
         );
         let market_json = db.query_json(&market_sql).await?;
 
@@ -155,7 +153,7 @@ impl PartitionedSource for MarketState1mSource {
         let mut rows: Vec<MarketStateRow> = Vec::with_capacity(accum.len());
 
         for ((minute_ms, coin), a) in accum {
-            let snap = market_map.get(&coin);
+            let snap = market_map.get(&(minute_ms, coin.clone()));
             let price_oracle = snap_get(snap, "oracle_px");
             let price_mark = snap_get(snap, "mark_px");
             let price_mid = snap
@@ -217,17 +215,23 @@ struct FillAccum {
     liq_short_count: i64,
 }
 
-/// Build `coin → category → value` map from a `market_data` query response.
+/// Build `(minute_ms, coin) → category → value` map from a `market_data`
+/// query response (columns: ts, ticker, category, value).
+///
+/// market_data has per-minute snapshots so we key by both the minute
+/// timestamp and the coin to allow exact-minute lookups.
 fn parse_market_data(
     json: &serde_json::Value,
-) -> AnySignalResult<HashMap<String, HashMap<String, f64>>> {
-    let mut map: HashMap<String, HashMap<String, f64>> = HashMap::new();
+) -> AnySignalResult<HashMap<(i64, String), HashMap<String, f64>>> {
+    let mut map: HashMap<(i64, String), HashMap<String, f64>> = HashMap::new();
     let rows = json["dataset"].as_array().map(Vec::as_slice).unwrap_or(&[]);
     for row in rows {
-        let coin = row[0].as_str().unwrap_or("").to_string();
-        let category = row[1].as_str().unwrap_or("").to_string();
-        let value = row[2].as_f64().unwrap_or(0.0);
-        map.entry(coin).or_default().insert(category, value);
+        let ts_str = row[0].as_str().unwrap_or("");
+        let minute_ms = questdb_ts_to_ms(ts_str)?;
+        let coin = row[1].as_str().unwrap_or("").to_string();
+        let category = row[2].as_str().unwrap_or("").to_string();
+        let value = row[3].as_f64().unwrap_or(0.0);
+        map.entry((minute_ms, coin)).or_default().insert(category, value);
     }
     Ok(map)
 }
