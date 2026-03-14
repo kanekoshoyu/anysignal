@@ -5,7 +5,7 @@ services:
       - "3000"
     environment:
       RUNNERS: ${RUNNERS:-api,realtime}
-      DEV_MODE: ${DEV_MODE:false}
+      DEV_MODE: ${DEV_MODE:-false}
       API_KEY_COINMARKETCAP: ${API_KEY_COINMARKETCAP}
       API_KEY_NEWSAPI: ${API_KEY_NEWSAPI}
       API_KEY_YOUTUBE_DATA_V3: ${API_KEY_YOUTUBE_DATA_V3}
