@@ -16,6 +16,8 @@ pub mod polygonio;
 pub mod secapi;
 // Hyperliquid S3
 pub mod hyperliquid_s3;
+// Hyperliquid WebSocket / realtime
+pub mod hyperliquid_ws;
 
 pub use error::{AdapterError, AdapterResult};
 

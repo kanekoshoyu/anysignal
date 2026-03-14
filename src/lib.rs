@@ -2,6 +2,8 @@
 
 /// third party api
 pub mod adapter;
+/// realtime market state engine
+pub mod engine;
 /// api server
 pub mod api;
 /// partitioned backfill sources

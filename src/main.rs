@@ -1,10 +1,14 @@
 use anysignal::adapter::coinmarketcap::fear_and_greed::FearAndGreedSignalSource;
 use anysignal::adapter::coinmarketcap::prelude::PollingSignalSource;
+use anysignal::adapter::hyperliquid_ws::GuilderBridge;
 use anysignal::adapter::newsapi::run_news_fetcher;
 use anysignal::adapter::polygonio::run_polygonio_stock;
 use anysignal::api::host_rest_api_server;
 use anysignal::config::Config;
+use anysignal::database::QuestDbClient;
+use anysignal::engine::MarketStateScheduler;
 use anysignal::error::{AnySignalError, AnySignalResult};
+use std::sync::Arc;
 use futures::future::join_all;
 use futures::TryFutureExt;
 use tokio::task::JoinHandle;
@@ -84,6 +88,28 @@ async fn main() -> AnySignalResult<()> {
         let config = config.clone();
 
         let handle = tokio::spawn(async move { run_news_fetcher(config.clone(), period).await });
+        runners.push(handle);
+    }
+
+    if config.has_runner("realtime") {
+        tracing::info!("Starting realtime market state engine");
+        let config = config.clone();
+        let handle = tokio::spawn(async move {
+            let db = Arc::new(
+                QuestDbClient::new(&config).map_err(AnySignalError::from)?,
+            );
+            let (scheduler, _event_rx) = MarketStateScheduler::new(db);
+
+            // Bridge: connects to Hyperliquid WS, seeds the engine with REST
+            // snapshots, then streams fills + asset contexts as Updates.
+            // Predicted funding polling is handled inside the bridge.
+            let update_tx = scheduler.update_sender();
+            tokio::spawn(async move {
+                GuilderBridge::new(update_tx).run().await;
+            });
+
+            scheduler.run().await
+        });
         runners.push(handle);
     }
 

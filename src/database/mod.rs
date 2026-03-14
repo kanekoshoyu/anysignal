@@ -470,6 +470,9 @@ pub struct MarketStateRow {
     pub liquidation_long_count: i64,
     /// Number of liquidated short fills.
     pub liquidation_short_count: i64,
+    /// Predicted next funding rate from the exchange, polled once per minute.
+    /// `None` when no prediction has been received yet for this coin.
+    pub predicted_funding_rate: Option<f64>,
 }
 
 // ---------------------------------------------------------------------------
@@ -487,7 +490,7 @@ pub fn insert_market_state_1m(sender: &mut Sender, rows: &[MarketStateRow]) -> Q
     for row in rows {
         let ts_us = TimestampMicros::new(row.minute_ms * 1_000); // ms → µs
 
-        buffer
+        let row_buf = buffer
             .table("market_state_1m")?
             .symbol("coin", &row.coin)?
             .column_f64("price_oracle", row.price_oracle)?
@@ -501,8 +504,100 @@ pub fn insert_market_state_1m(sender: &mut Sender, rows: &[MarketStateRow]) -> Q
             .column_f64("liquidation_long_volume", row.liquidation_long_volume)?
             .column_f64("liquidation_short_volume", row.liquidation_short_volume)?
             .column_i64("liquidation_long_count", row.liquidation_long_count)?
-            .column_i64("liquidation_short_count", row.liquidation_short_count)?
-            .at(ts_us)?;
+            .column_i64("liquidation_short_count", row.liquidation_short_count)?;
+
+        if let Some(pfr) = row.predicted_funding_rate {
+            row_buf.column_f64("predicted_funding_rate", pfr)?;
+        }
+
+        row_buf.at(ts_us)?;
+
+        count += 1;
+
+        if buffer.len() >= BUFFER_FLUSH_THRESHOLD {
+            sender.flush(&mut buffer)?;
+        }
+    }
+
+    if !buffer.is_empty() {
+        sender.flush(&mut buffer)?;
+    }
+
+    Ok(count)
+}
+
+// ---------------------------------------------------------------------------
+// Market state real-time 1-minute row
+// ---------------------------------------------------------------------------
+
+/// One row in `market_state_rt_1m`.
+///
+/// Written by the realtime runner on each 1-minute boundary.
+/// `price_oracle` is `None` when the exchange did not provide one for that tick.
+#[derive(Debug)]
+pub struct MarketStateRt1mRow {
+    /// Left-closed minute bucket start, Unix milliseconds.
+    pub minute_ms: i64,
+    pub coin: String,
+    /// Oracle price from the exchange asset context, when available.
+    pub price_oracle: Option<f64>,
+    /// Mark price from the exchange asset context.
+    pub price_mark: f64,
+    /// Mid price — exchange-reported mid when present, else mark price.
+    pub price_mid: f64,
+    pub open_interest: f64,
+    pub funding_rate: f64,
+    pub volume_24h_usd: f64,
+    pub predicted_funding_rate: Option<f64>,
+    pub trade_volume: f64,
+    pub trade_count: i64,
+    pub liquidation_long_volume: f64,
+    pub liquidation_short_volume: f64,
+    pub liquidation_long_count: i64,
+    pub liquidation_short_count: i64,
+}
+
+// ---------------------------------------------------------------------------
+// Market state real-time 1-minute ingestion
+// ---------------------------------------------------------------------------
+
+/// Batch-insert [`MarketStateRt1mRow`]s into the `market_state_rt_1m` table.
+///
+/// The buffer is flushed automatically at [`BUFFER_FLUSH_THRESHOLD`].
+/// Returns the total number of rows written.
+pub fn insert_market_state_rt_1m(
+    sender: &mut Sender,
+    rows: &[MarketStateRt1mRow],
+) -> QuestResult<usize> {
+    let mut buffer = Buffer::new();
+    let mut count: usize = 0;
+
+    for row in rows {
+        let ts_us = TimestampMicros::new(row.minute_ms * 1_000);
+
+        let row_buf = buffer
+            .table("market_state_rt_1m")?
+            .symbol("coin", &row.coin)?
+            .column_f64("price_mark", row.price_mark)?
+            .column_f64("price_mid", row.price_mid)?
+            .column_f64("open_interest", row.open_interest)?
+            .column_f64("funding_rate", row.funding_rate)?
+            .column_f64("volume_24h_usd", row.volume_24h_usd)?
+            .column_f64("trade_volume", row.trade_volume)?
+            .column_i64("trade_count", row.trade_count)?
+            .column_f64("liquidation_long_volume", row.liquidation_long_volume)?
+            .column_f64("liquidation_short_volume", row.liquidation_short_volume)?
+            .column_i64("liquidation_long_count", row.liquidation_long_count)?
+            .column_i64("liquidation_short_count", row.liquidation_short_count)?;
+
+        if let Some(po) = row.price_oracle {
+            row_buf.column_f64("price_oracle", po)?;
+        }
+        if let Some(pfr) = row.predicted_funding_rate {
+            row_buf.column_f64("predicted_funding_rate", pfr)?;
+        }
+
+        row_buf.at(ts_us)?;
 
         count += 1;
 

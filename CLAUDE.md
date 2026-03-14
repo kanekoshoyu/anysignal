@@ -7,6 +7,7 @@ Rust async service that backfills and streams trading signals/market data into *
 - **`src/main.rs`** — spawns tokio tasks for each enabled runner (`RUNNERS=api,coinmarketcap,…`)
 - **`src/config.rs`** — `Config` struct (`questdb_addr`, etc.); passed by reference everywhere — never read env vars directly in business logic
 - **`src/adapter/`** — one sub-module per data source; implement `DataSource` / `HistoricDataSource` traits
+- **`src/engine/`** — realtime market state engine; `MarketEngine` (in-memory per-coin state), `MarketStateScheduler` (1m flush to QuestDB + predicted funding poll)
 - **`src/database/mod.rs`** — QuestDB ILP writers (batch via `Buffer`, flush via `Sender`)
 - **`src/api/rest/endpoint.rs`** — Poem/OpenAPI REST; `GET /backfill` is the main entry point
 
@@ -174,7 +175,8 @@ CREATE TABLE market_state_1m (
     liquidation_long_volume  DOUBLE,
     liquidation_short_volume DOUBLE,
     liquidation_long_count   LONG,
-    liquidation_short_count  LONG
+    liquidation_short_count  LONG,
+    predicted_funding_rate   DOUBLE  -- polled from Hyperliquid REST API (HlPerp venue); NULL for backfilled rows
 ) timestamp(ts) PARTITION BY DAY;
 ```
 

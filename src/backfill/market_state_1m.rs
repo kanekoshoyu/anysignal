@@ -182,6 +182,7 @@ impl PartitionedSource for MarketState1mSource {
                 liquidation_short_volume: a.liq_short_volume,
                 liquidation_long_count: a.liq_long_count,
                 liquidation_short_count: a.liq_short_count,
+                predicted_funding_rate: None,
             });
         }
 
