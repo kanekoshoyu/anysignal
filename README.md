@@ -1,10 +1,8 @@
-# AnySignal Indexer
-> PubSub/Get index market data for trading
+# AnySignal
 
-A trading **strategy** generates **instances** each consisting **legs** based on **signals**.  
-This project first focuses on 
-- setting up framework for gathering signals, data visualization and backtesting via QuestDB
-- study even driven market patterns based on correlation between market scenario, events and prices 
+> Research tool that aggregates historic and realtime market data into QuestDB for strategy research and backtesting.
+
+AnySignal is a Rust async service that backfills historic data from S3 and streams live market data, consolidating both into a single QuestDB instance. It serves as the data foundation for studying event-driven market patterns, signal correlation, and strategy development.
 
 ## backfill endpoint
 `POST /backfill` — fetch historic data from S3 into QuestDB for a date range.
@@ -50,7 +48,7 @@ docker build -t anysignal .
 ```
 
 ### run
-Copy `.env.example` to `.env`, fill in your values, then:
+Copy `.env.example` to `.env`, fill in your values (QuestDB address, AWS credentials, runners, etc.), then:
 ```sh
 docker run --rm \
   --env-file .env \
@@ -58,25 +56,7 @@ docker run --rm \
   anysignal
 ```
 
-Or pass env vars inline:
-```sh
-docker run --rm \
-  -e QUESTDB_ADDR=host:9000 \
-  -e AWS_ACCESS_KEY_ID=... \
-  -e AWS_SECRET_ACCESS_KEY=... \
-  -e RUNNERS=hyperliquid \
-  -p 3000:3000 \
-  anysignal
-```
-
-The REST API is available at `http://localhost:3000`.
-
-To connect to QuestDB running in another container, add both to the same network:
-```sh
-docker network create anysignal-net
-docker run --name signal-questdb --network anysignal-net -p 9000:9000 -d questdb/questdb
-docker run --rm --network anysignal-net --env-file .env -e QUESTDB_ADDR=signal-questdb:9000 -p 3000:3000 anysignal
-```
+The REST API is available at `http://localhost:3000`. All service instances write to the QuestDB specified in `.env`.
 
 
 ## testing
@@ -92,5 +72,5 @@ cargo test -- --ignored
 ```
 
 ## see also
-- [code structure and todo](./src/README.md)
+- [code structure](./src/README.md)
 - [changelog](./CHANGELOG.md)

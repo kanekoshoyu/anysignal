@@ -60,8 +60,9 @@ impl PartitionedSource for NodeFillsLegacySource {
         key: &NodeFillsLegacyHourKey,
     ) -> AnySignalResult<bool> {
         let hour_end = key.hour + chrono::Duration::hours(1);
+        let table = db.table_name("hyperliquid_fill");
         let sql = format!(
-            "SELECT count() FROM hyperliquid_fill \
+            "SELECT count() FROM {table} \
              WHERE source = 'HYPERLIQUID_NODE' \
              AND ts >= '{}Z' \
              AND ts < '{}Z'",
@@ -90,8 +91,9 @@ impl PartitionedSource for NodeFillsLegacySource {
         let t_insert = std::time::Instant::now();
         // Use block_in_place so the blocking mutex + synchronous HTTP flush
         // don't starve the Tokio thread pool.
+        let table = db.table_name("hyperliquid_fill");
         let rows = tokio::task::block_in_place(|| {
-            db.with_sender(|s| insert_hyperliquid_fills(s, &fills))
+            db.with_sender(|s| insert_hyperliquid_fills(s, &table, &fills))
         })? as u64;
         let insert_ms = t_insert.elapsed().as_millis();
 

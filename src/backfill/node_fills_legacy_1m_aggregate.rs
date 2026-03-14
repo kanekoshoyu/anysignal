@@ -60,8 +60,9 @@ impl PartitionedSource for NodeFillsLegacy1mAggregateSource {
         key: &NodeFillsLegacy1mAggregateHourKey,
     ) -> AnySignalResult<bool> {
         let hour_end = key.hour + chrono::Duration::hours(1);
+        let table = db.table_name("hyperliquid_fill_1m_aggregate");
         let sql = format!(
-            "SELECT count() FROM hyperliquid_fill_1m_aggregate \
+            "SELECT count() FROM {table} \
              WHERE ts >= '{}Z' \
              AND ts < '{}Z'",
             key.hour.format("%Y-%m-%dT%H:%M:%S"),
@@ -87,8 +88,9 @@ impl PartitionedSource for NodeFillsLegacy1mAggregateSource {
         aggregated.sort_unstable_by_key(|a| a.minute_ms);
 
         let t_insert = std::time::Instant::now();
+        let table = db.table_name("hyperliquid_fill_1m_aggregate");
         let rows = tokio::task::block_in_place(|| {
-            db.with_sender(|s| insert_hyperliquid_fill_1m_aggregate(s, &aggregated))
+            db.with_sender(|s| insert_hyperliquid_fill_1m_aggregate(s, &table, &aggregated))
         })? as u64;
         let insert_ms = t_insert.elapsed().as_millis();
 

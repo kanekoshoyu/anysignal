@@ -150,7 +150,8 @@ impl MarketStateScheduler {
 
         let count = rows.len();
         if !rows.is_empty() {
-            self.db.with_sender(|s| insert_market_state_rt_1m(s, &rows))?;
+            let table = self.db.table_name("market_state_rt_1m");
+            self.db.with_sender(|s| insert_market_state_rt_1m(s, &table, &rows))?;
         }
 
         self.engine.reset_all_windows();

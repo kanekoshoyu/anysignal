@@ -17,6 +17,10 @@ pub struct Config {
     /// Path to the postmortem log file. Written on panic; survives restarts.
     /// Set via `POSTMORTEM_LOG` (default: `/data/postmortem.log`).
     pub postmortem_log_path: String,
+    /// When `true`, all QuestDB table names are suffixed with `_dev` to
+    /// prevent test data from polluting production tables.
+    /// Set via `DEV_MODE=true`.
+    pub dev: bool,
 }
 
 impl Config {
@@ -36,6 +40,9 @@ impl Config {
             env::var("API_BASE_URL").unwrap_or_else(|_| "http://localhost:3000".to_string());
         let postmortem_log_path =
             env::var("POSTMORTEM_LOG").unwrap_or_else(|_| "/data/postmortem.log".to_string());
+        let dev = env::var("DEV_MODE")
+            .map(|v| v == "true" || v == "1")
+            .unwrap_or(false);
         Self {
             runners,
             questdb_addr,
@@ -43,6 +50,19 @@ impl Config {
             questdb_password,
             api_base_url,
             postmortem_log_path,
+            dev,
+        }
+    }
+
+    /// Returns the QuestDB table name for the given base name.
+    ///
+    /// In dev mode (`DEV_MODE=true`) the suffix `_dev` is appended so that
+    /// test data never touches production tables.
+    pub fn table_name(&self, base: &str) -> String {
+        if self.dev {
+            format!("{}_dev", base)
+        } else {
+            base.to_string()
         }
     }
 

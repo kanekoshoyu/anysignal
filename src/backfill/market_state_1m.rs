@@ -65,8 +65,9 @@ impl PartitionedSource for MarketState1mSource {
         key: &MarketState1mHourKey,
     ) -> AnySignalResult<bool> {
         let hour_end = key.hour + chrono::Duration::hours(1);
+        let table = db.table_name("market_state_1m");
         let sql = format!(
-            "SELECT count() FROM market_state_1m \
+            "SELECT count() FROM {table} \
              WHERE ts >= '{}Z' AND ts < '{}Z'",
             key.hour.format("%Y-%m-%dT%H:%M:%S"),
             hour_end.format("%Y-%m-%dT%H:%M:%S"),
@@ -84,9 +85,10 @@ impl PartitionedSource for MarketState1mSource {
         let t_fetch = std::time::Instant::now();
 
         // Fetch 1-minute fill aggregates for [H, H+1h).
+        let fill_table = db.table_name("hyperliquid_fill_1m_aggregate");
         let fill_sql = format!(
             "SELECT ts, coin, category, buy_side, quantity, trade_count \
-             FROM hyperliquid_fill_1m_aggregate \
+             FROM {fill_table} \
              WHERE ts >= '{}Z' AND ts < '{}Z' \
              ORDER BY ts",
             key.hour.format("%Y-%m-%dT%H:%M:%S"),
@@ -97,9 +99,10 @@ impl PartitionedSource for MarketState1mSource {
         // Fetch per-minute market snapshots for [H, H+1h).
         // market_data stores minute-level snapshots so we scope to the exact
         // hour to avoid fetching millions of rows for the whole day.
+        let market_table = db.table_name("market_data");
         let market_sql = format!(
             "SELECT ts, ticker, category, value \
-             FROM market_data \
+             FROM {market_table} \
              WHERE ts >= '{}Z' AND ts < '{}Z' \
              AND source = 'HYPERLIQUID_S3'",
             key.hour.format("%Y-%m-%dT%H:%M:%S"),
@@ -192,8 +195,9 @@ impl PartitionedSource for MarketState1mSource {
         });
 
         let t_insert = std::time::Instant::now();
+        let ms1m_table = db.table_name("market_state_1m");
         let row_count = tokio::task::block_in_place(|| {
-            db.with_sender(|s| insert_market_state_1m(s, &rows))
+            db.with_sender(|s| insert_market_state_1m(s, &ms1m_table, &rows))
         })? as u64;
         let insert_ms = t_insert.elapsed().as_millis();
 

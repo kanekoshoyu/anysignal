@@ -45,8 +45,9 @@ impl PartitionedSource for L2SnapshotSource {
 
     async fn partition_exists(db: &QuestDbClient, key: &L2PartitionKey) -> AnySignalResult<bool> {
         let hour_end = key.hour + chrono::Duration::hours(1);
+        let table = db.table_name("l2_orderbook");
         let sql = format!(
-            "SELECT count() FROM l2_orderbook \
+            "SELECT count() FROM {table} \
              WHERE ticker = '{}' \
              AND ts >= '{}Z' \
              AND ts < '{}Z'",
@@ -70,7 +71,8 @@ impl PartitionedSource for L2SnapshotSource {
         let fetch_ms = t_fetch.elapsed().as_millis();
 
         let t_insert = std::time::Instant::now();
-        let rows = db.with_sender(|s| insert_l2_snapshots(s, &snapshots))? as u64;
+        let table = db.table_name("l2_orderbook");
+        let rows = db.with_sender(|s| insert_l2_snapshots(s, &table, &snapshots))? as u64;
         let insert_ms = t_insert.elapsed().as_millis();
 
         Ok(PartitionStats { rows, fetch_ms, insert_ms })

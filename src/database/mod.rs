@@ -174,6 +174,7 @@ pub fn questdb_sender(config: &Config) -> QuestResult<Sender> {
 pub struct QuestDbClient {
     pub addr: String,
     sender: std::sync::Mutex<Sender>,
+    dev: bool,
 }
 
 impl QuestDbClient {
@@ -183,7 +184,20 @@ impl QuestDbClient {
         Ok(Self {
             addr: config.questdb_addr.clone(),
             sender: std::sync::Mutex::new(sender),
+            dev: config.dev,
         })
+    }
+
+    /// Returns the QuestDB table name for the given base name.
+    ///
+    /// Appends `_dev` when running in dev mode so test data never touches
+    /// production tables.
+    pub fn table_name(&self, base: &str) -> String {
+        if self.dev {
+            format!("{}_dev", base)
+        } else {
+            base.to_string()
+        }
     }
 
     /// Execute a closure with exclusive access to the ILP [`Sender`].
@@ -255,7 +269,11 @@ const BUFFER_FLUSH_THRESHOLD: usize = 64 * 1024 * 1024;
 /// The buffer is flushed automatically whenever it reaches
 /// [`BUFFER_FLUSH_THRESHOLD`], so callers never need to worry about the
 /// QuestDB maximum-buffer-size limit regardless of input size.
-pub fn insert_asset_ctxs(sender: &mut Sender, rows: &[AssetCtxRow]) -> QuestResult<()> {
+pub fn insert_asset_ctxs(
+    sender: &mut Sender,
+    table: &str,
+    rows: &[AssetCtxRow],
+) -> QuestResult<()> {
     let mut buffer = Buffer::new();
 
     for row in rows {
@@ -272,7 +290,7 @@ pub fn insert_asset_ctxs(sender: &mut Sender, rows: &[AssetCtxRow]) -> QuestResu
 
         for (category, value) in metrics {
             buffer
-                .table("market_data")?
+                .table(table)?
                 .symbol("category", category)?
                 .symbol("ticker", &row.coin)?
                 .symbol("source", "HYPERLIQUID_S3")?
@@ -282,7 +300,7 @@ pub fn insert_asset_ctxs(sender: &mut Sender, rows: &[AssetCtxRow]) -> QuestResu
 
         if let Some(v) = row.mid_px {
             buffer
-                .table("market_data")?
+                .table(table)?
                 .symbol("category", "mid_px")?
                 .symbol("ticker", &row.coin)?
                 .symbol("source", "HYPERLIQUID_S3")?
@@ -292,7 +310,7 @@ pub fn insert_asset_ctxs(sender: &mut Sender, rows: &[AssetCtxRow]) -> QuestResu
 
         if let Some(v) = row.premium {
             buffer
-                .table("market_data")?
+                .table(table)?
                 .symbol("category", "premium")?
                 .symbol("ticker", &row.coin)?
                 .symbol("source", "HYPERLIQUID_S3")?
@@ -327,7 +345,11 @@ const L2_BUFFER_FLUSH_THRESHOLD: usize = 64 * 1024 * 1024;
 ///
 /// The buffer is flushed automatically at [`L2_BUFFER_FLUSH_THRESHOLD`].
 /// Returns the total number of rows written.
-pub fn insert_l2_snapshots(sender: &mut Sender, snapshots: &[L2Snapshot]) -> QuestResult<usize> {
+pub fn insert_l2_snapshots(
+    sender: &mut Sender,
+    table: &str,
+    snapshots: &[L2Snapshot],
+) -> QuestResult<usize> {
     let mut buffer = Buffer::new();
     let mut rows: usize = 0;
 
@@ -340,7 +362,7 @@ pub fn insert_l2_snapshots(sender: &mut Sender, snapshots: &[L2Snapshot]) -> Que
                 let quantity: f64 = level.sz.parse().unwrap_or(0.0);
 
                 buffer
-                    .table("l2_orderbook")?
+                    .table(table)?
                     .symbol("source", "HYPERLIQUID_S3")?
                     .symbol("ticker", snapshot.coin())?
                     .symbol("side", side_str)?
@@ -397,7 +419,11 @@ pub struct Fill1mAggregate {
 ///
 /// The buffer is flushed automatically at [`BUFFER_FLUSH_THRESHOLD`].
 /// Returns the total number of rows written.
-pub fn insert_hyperliquid_fills(sender: &mut Sender, fills: &[ParsedFill]) -> QuestResult<usize> {
+pub fn insert_hyperliquid_fills(
+    sender: &mut Sender,
+    table: &str,
+    fills: &[ParsedFill],
+) -> QuestResult<usize> {
     let mut buffer = Buffer::new();
     let mut rows: usize = 0;
 
@@ -405,7 +431,7 @@ pub fn insert_hyperliquid_fills(sender: &mut Sender, fills: &[ParsedFill]) -> Qu
         let ts_us = TimestampMicros::new(fill.time_ms * 1_000); // ms → µs
 
         buffer
-            .table("hyperliquid_fill")?
+            .table(table)?
             .symbol("coin", &fill.coin)?
             .symbol("wallet", &fill.wallet)?
             .symbol("side", &fill.side)?
@@ -483,7 +509,11 @@ pub struct MarketStateRow {
 ///
 /// The buffer is flushed automatically at [`BUFFER_FLUSH_THRESHOLD`].
 /// Returns the total number of rows written.
-pub fn insert_market_state_1m(sender: &mut Sender, rows: &[MarketStateRow]) -> QuestResult<usize> {
+pub fn insert_market_state_1m(
+    sender: &mut Sender,
+    table: &str,
+    rows: &[MarketStateRow],
+) -> QuestResult<usize> {
     let mut buffer = Buffer::new();
     let mut count: usize = 0;
 
@@ -491,7 +521,7 @@ pub fn insert_market_state_1m(sender: &mut Sender, rows: &[MarketStateRow]) -> Q
         let ts_us = TimestampMicros::new(row.minute_ms * 1_000); // ms → µs
 
         let row_buf = buffer
-            .table("market_state_1m")?
+            .table(table)?
             .symbol("coin", &row.coin)?
             .column_f64("price_oracle", row.price_oracle)?
             .column_f64("price_mark", row.price_mark)?
@@ -567,6 +597,7 @@ pub struct MarketStateRt1mRow {
 /// Returns the total number of rows written.
 pub fn insert_market_state_rt_1m(
     sender: &mut Sender,
+    table: &str,
     rows: &[MarketStateRt1mRow],
 ) -> QuestResult<usize> {
     let mut buffer = Buffer::new();
@@ -576,7 +607,7 @@ pub fn insert_market_state_rt_1m(
         let ts_us = TimestampMicros::new(row.minute_ms * 1_000);
 
         let row_buf = buffer
-            .table("market_state_rt_1m")?
+            .table(table)?
             .symbol("coin", &row.coin)?
             .column_f64("price_mark", row.price_mark)?
             .column_f64("price_mid", row.price_mid)?
@@ -627,6 +658,7 @@ pub fn insert_market_state_rt_1m(
 /// Returns the total number of rows written.
 pub fn insert_hyperliquid_fill_1m_aggregate(
     sender: &mut Sender,
+    table: &str,
     rows: &[Fill1mAggregate],
 ) -> QuestResult<usize> {
     let mut buffer = Buffer::new();
@@ -636,7 +668,7 @@ pub fn insert_hyperliquid_fill_1m_aggregate(
         let ts_us = TimestampMicros::new(row.minute_ms * 1_000); // ms → µs
 
         buffer
-            .table("hyperliquid_fill_1m_aggregate")?
+            .table(table)?
             .symbol("coin", &row.coin)?
             .symbol("category", &row.category)?
             .column_bool("buy_side", row.buy_side)?

@@ -26,8 +26,9 @@ impl PartitionedSource for AssetCtxsSource {
 
     async fn partition_exists(db: &QuestDbClient, key: &NaiveDate) -> AnySignalResult<bool> {
         let next_day = key.succ_opt().unwrap_or(*key);
+        let table = db.table_name("market_data");
         let sql = format!(
-            "SELECT count() FROM market_data \
+            "SELECT count() FROM {table} \
              WHERE source = 'HYPERLIQUID_S3' \
              AND ts >= '{}T00:00:00Z' \
              AND ts < '{}T00:00:00Z'",
@@ -49,7 +50,8 @@ impl PartitionedSource for AssetCtxsSource {
 
         let t_insert = std::time::Instant::now();
         let rows_n = rows.len() as u64;
-        db.with_sender(|s| insert_asset_ctxs(s, &rows))?;
+        let table = db.table_name("market_data");
+        db.with_sender(|s| insert_asset_ctxs(s, &table, &rows))?;
         let insert_ms = t_insert.elapsed().as_millis();
 
         Ok(PartitionStats { rows: rows_n, fetch_ms, insert_ms })

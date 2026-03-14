@@ -94,8 +94,9 @@ impl PartitionedSource for NodeFills1mAggregateSource {
         key: &NodeFills1mAggregateHourKey,
     ) -> AnySignalResult<bool> {
         let hour_end = key.hour + chrono::Duration::hours(1);
+        let table = db.table_name("hyperliquid_fill_1m_aggregate");
         let sql = format!(
-            "SELECT count() FROM hyperliquid_fill_1m_aggregate \
+            "SELECT count() FROM {table} \
              WHERE ts >= '{}Z' \
              AND ts < '{}Z'",
             key.hour.format("%Y-%m-%dT%H:%M:%S"),
@@ -184,8 +185,9 @@ impl PartitionedSource for NodeFills1mAggregateSource {
         let t_insert = std::time::Instant::now();
         // Use block_in_place so the blocking mutex + synchronous HTTP flush
         // don't starve the Tokio thread pool.
+        let table = db.table_name("hyperliquid_fill_1m_aggregate");
         let rows = tokio::task::block_in_place(|| {
-            db.with_sender(|s| insert_hyperliquid_fill_1m_aggregate(s, &aggregated))
+            db.with_sender(|s| insert_hyperliquid_fill_1m_aggregate(s, &table, &aggregated))
         })? as u64;
         let insert_ms = t_insert.elapsed().as_millis();
 
